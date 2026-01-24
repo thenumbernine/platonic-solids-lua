@@ -11,6 +11,7 @@ local shapeIndex = 1
 
 local sqrt2 = math.sqrt(2)
 local sqrt3 = math.sqrt(3)
+local sqrt5 = math.sqrt(5)
 local _1_sqrt3 = 1 / sqrt3 
 
 local shapes = {
@@ -116,27 +117,27 @@ local shapes = {
 	{
 		name = 'dodecahedron',
 		vs = matrix{
-			{(3 + math.sqrt(5)) / 2, -1, 0},
-			{(1 + math.sqrt(5)) / 2, -(1 + math.sqrt(5)) / 2, (1 + math.sqrt(5)) / 2},
-			{(3 + math.sqrt(5)) / 2, 1, 0},
-			{(1 + math.sqrt(5)) / 2, -(1 + math.sqrt(5)) / 2, -(1 + math.sqrt(5)) / 2},
-			{1, 0, (3 + math.sqrt(5)) / 2},
-			{(1 + math.sqrt(5)) / 2, (1 + math.sqrt(5)) / 2, (1 + math.sqrt(5)) / 2},
-			{0, -(3 + math.sqrt(5)) / 2, 1},
-			{0, -(3 + math.sqrt(5)) / 2, -1},
-			{(1 + math.sqrt(5)) / 2, (1 + math.sqrt(5)) / 2, -(1 + math.sqrt(5)) / 2},
-			{1, 0, -(3 + math.sqrt(5)) / 2},
-			{-1, 0, (3 + math.sqrt(5)) / 2},
-			{-(1 + math.sqrt(5)) / 2, -(1 + math.sqrt(5)) / 2, (1 + math.sqrt(5)) / 2},
-			{0, (3 + math.sqrt(5)) / 2, 1},
-			{0, (3 + math.sqrt(5)) / 2, -1},
-			{-(1 + math.sqrt(5)) / 2, -(1 + math.sqrt(5)) / 2, -(1 + math.sqrt(5)) / 2},
-			{-1, 0, -(3 + math.sqrt(5)) / 2},
-			{-(1 + math.sqrt(5)) / 2, (1 + math.sqrt(5)) / 2, (1 + math.sqrt(5)) / 2},
-			{-(3 + math.sqrt(5)) / 2, -1, 0},
-			{-(1 + math.sqrt(5)) / 2, (1 + math.sqrt(5)) / 2, -(1 + math.sqrt(5)) / 2},
-			{-(3 + math.sqrt(5)) / 2, 1, 0}
-		} / math.sqrt((9 + 3 * math.sqrt(5)) / 2),
+			{(3 + sqrt5) / 2, -1, 0},
+			{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
+			{(3 + sqrt5) / 2, 1, 0},
+			{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+			{1, 0, (3 + sqrt5) / 2},
+			{(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
+			{0, -(3 + sqrt5) / 2, 1},
+			{0, -(3 + sqrt5) / 2, -1},
+			{(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+			{1, 0, -(3 + sqrt5) / 2},
+			{-1, 0, (3 + sqrt5) / 2},
+			{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
+			{0, (3 + sqrt5) / 2, 1},
+			{0, (3 + sqrt5) / 2, -1},
+			{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+			{-1, 0, -(3 + sqrt5) / 2},
+			{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
+			{-(3 + sqrt5) / 2, -1, 0},
+			{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+			{-(3 + sqrt5) / 2, 1, 0}
+		} / math.sqrt((9 + 3 * sqrt5) / 2),
 		vtxMulTable = {
 			{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
 			{2, 3, 4, 5, 1, 7, 8, 9, 10, 6, 12, 13, 14, 15, 11, 17, 18, 19, 20, 16},
@@ -203,19 +204,19 @@ local shapes = {
 	{
 		name = 'icosahedron',
 		vs = matrix{
-			{0, (-1+math.sqrt(5))/4, 1/2},
-			{1/2, 0, (-1+math.sqrt(5))/4},
-			{-1/2, 0, (-1+math.sqrt(5))/4},
-			{(-1+math.sqrt(5))/4, 1/2, 0},
-			{(1-math.sqrt(5))/4, 1/2, 0},
-			{0, (1-math.sqrt(5))/4, 1/2},
-			{0, (-1+math.sqrt(5))/4, -1/2},
-			{(-1+math.sqrt(5))/4, -1/2, 0},
-			{(1-math.sqrt(5))/4, -1/2, 0},
-			{1/2, 0, (1-math.sqrt(5))/4},
-			{-1/2, 0, (1-math.sqrt(5))/4},
-			{0, (1-math.sqrt(5))/4, -1/2},
-		} / math.sqrt((5 - math.sqrt(5)) / 8),
+			{0, (-1+sqrt5)/4, 1/2},
+			{1/2, 0, (-1+sqrt5)/4},
+			{-1/2, 0, (-1+sqrt5)/4},
+			{(-1+sqrt5)/4, 1/2, 0},
+			{(1-sqrt5)/4, 1/2, 0},
+			{0, (1-sqrt5)/4, 1/2},
+			{0, (-1+sqrt5)/4, -1/2},
+			{(-1+sqrt5)/4, -1/2, 0},
+			{(1-sqrt5)/4, -1/2, 0},
+			{1/2, 0, (1-sqrt5)/4},
+			{-1/2, 0, (1-sqrt5)/4},
+			{0, (1-sqrt5)/4, -1/2},
+		} / math.sqrt((5 - sqrt5) / 8),
 		vtxMulTable = {
 			{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
 			{2, 3, 4, 5, 1, 7, 8, 9, 10, 6, 11, 12},
