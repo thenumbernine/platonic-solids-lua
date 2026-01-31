@@ -344,10 +344,16 @@ function App:update(...)
 end
 
 function App:updateGUI()
-	for i,shape in ipairs(shapes) do
-		if ig.igButton(shape.name) then
-			shapeIndex = i
+	if ig.igBeginMainMenuBar() then
+		if ig.igBeginMenu'shape' then
+			for i,shape in ipairs(shapes) do
+				if ig.igButton(shape.name) then
+					shapeIndex = i
+				end
+			end
+			ig.igEndMenu()
 		end
+		ig.igEndMainMenuBar()
 	end
 end
 
