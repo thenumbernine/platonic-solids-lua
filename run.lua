@@ -36,7 +36,11 @@ local shapes = {
 			{4, 1, 3, 2},
 			{2, 1, 4, 3},
 			{3, 1, 2, 4}
-		}
+		},
+		xformBasis = {
+			{{-.5, -1/(2*math.sqrt(3)), -math.sqrt(2/3)}, { 1/(2*math.sqrt(3)), 5/6, -math.sqrt(2)/3}, { math.sqrt(2/3), -math.sqrt(2)/3, -1/3}},
+			{{-.5, -math.sqrt(3)/2, 0}, { math.sqrt(3)/2, -.5, 0}, {0, 0, 1}},
+		},
 	},
 	{
 		name = 'cube',
