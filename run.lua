@@ -1,5 +1,6 @@
 #!/usr/bin/env luajit
 local table = require 'ext.table'
+local assert = require 'ext.assert'
 local gl = require 'gl'
 local ig = require 'imgui'
 local matrix = require 'matrix'
@@ -38,8 +39,16 @@ local shapes = {
 			{3, 1, 2, 4}
 		},
 		xformBasis = {
-			{{-.5, -1/(2*math.sqrt(3)), -math.sqrt(2/3)}, { 1/(2*math.sqrt(3)), 5/6, -math.sqrt(2)/3}, { math.sqrt(2/3), -math.sqrt(2)/3, -1/3}},
-			{{-.5, -math.sqrt(3)/2, 0}, { math.sqrt(3)/2, -.5, 0}, {0, 0, 1}},
+			{
+				{-.5, -1/(2*math.sqrt(3)), -math.sqrt(2/3)},
+				{1/(2*math.sqrt(3)), 5/6, -math.sqrt(2)/3},
+				{math.sqrt(2/3), -math.sqrt(2)/3, -1/3},
+			},
+			{
+				{-.5, -math.sqrt(3)/2, 0},
+				{math.sqrt(3)/2, -.5, 0},
+				{0, 0, 1},
+			},
 		},
 	},
 	{
@@ -80,6 +89,18 @@ local shapes = {
 			{5, 2, 8, 3, 6, 1, 7, 4},
 			{7, 4, 3, 8, 1, 6, 5, 2}
 		},
+		xformBasis = {
+			{
+				{1, 0, 0},
+				{0, 0, -1},
+				{0, 1, 0},
+			},
+			{
+				{0, 0, 1},
+				{0, 1, 0},
+				{-1, 0, 0},
+			}
+		},
 	},
 	{
 		name = 'octahedron',
@@ -117,6 +138,10 @@ local shapes = {
 			{4, 6, 2, 5, 1, 3},
 			{4, 1, 5, 2, 6, 3}
 		},
+		xformBasis = {
+			{{1, 0, 0}, {0, 0, -1}, {0, 1, 0}},
+			{{0, 0, 1}, {0, 1, 0}, {-1, 0, 0}}
+		}
 	},
 	{
 		name = 'dodecahedron',
@@ -204,6 +229,18 @@ local shapes = {
 			{11, 10, 13, 19, 16, 1, 15, 8, 7, 14, 6, 5, 20, 2, 9, 12, 4, 18, 17, 3},
 			{15, 16, 18, 13, 7, 10, 9, 11, 3, 12, 17, 4, 6, 8, 2, 20, 19, 5, 14, 1},
 		},
+		xformBasis = {
+			{
+				{(-1+math.sqrt(5))/4, -(1+math.sqrt(5))/4, -1/2},
+				{(1+math.sqrt(5))/4, 1/2, (1-math.sqrt(5))/4},
+				{1/2, (1-math.sqrt(5))/4, (1+math.sqrt(5))/4},
+			},
+			{
+				{(1+math.sqrt(5))/4, 1/2, (1-math.sqrt(5))/4},
+				{-1/2, (-1+math.sqrt(5))/4, -(1+math.sqrt(5))/4},
+				{(1-math.sqrt(5))/4, (1+math.sqrt(5))/4, 1/2},
+			}
+		},
 	},
 	{
 		name = 'icosahedron',
@@ -283,8 +320,49 @@ local shapes = {
 			{10, 3, 12, 1, 9, 5, 8, 11, 6, 4, 7, 2},
 			{12, 3, 6, 7, 5, 11, 8, 1, 2, 10, 9, 4},
 		},
+		xformBasis = {
+			{
+				{(-1+math.sqrt(5))/4, -(1+math.sqrt(5))/4, -1/2},
+				{(1+math.sqrt(5))/4, 1/2, (1-math.sqrt(5))/4},
+				{1/2, (1-math.sqrt(5))/4, (1+math.sqrt(5))/4},
+			},
+			{
+				{(1+math.sqrt(5))/4, 1/2, (1-math.sqrt(5))/4},
+				{-1/2, (-1+math.sqrt(5))/4, -(1+math.sqrt(5))/4},
+				{(1-math.sqrt(5))/4, (1+math.sqrt(5))/4, 1/2},
+			},
+		},
 	},
 }
+	
+local epsilon = 1e-3
+for _,shape in ipairs(shapes) do
+	for i=1,#shape.vs do
+		shape.vs[i] = matrix(shape.vs[i])
+	end
+	for i=1,#shape.xformBasis do
+		shape.xformBasis[i] = matrix(shape.xformBasis[i])
+	end
+
+	-- build all basis ... ?
+	shape.xforms = table(shape.xformBasis)
+	for i=1,math.huge do
+		local xform = shape.xforms[i]
+		local found
+		for j,xform2 in ipairs(shape.xforms) do
+			local xform3 = xform * xform2
+			local k = shape.xforms:find(nil, function(xform)
+				return (xform - xform3):normSq() < epsilon
+			end)
+			if not k then
+				shape.xforms:insert(xform3)
+				found = true
+			end
+		end
+		if not found then break end
+	end
+	assert.eq(#shape.xforms, #shape.vtxMulTable)
+end
 
 for _,shape in ipairs(shapes) do
 	shape.vtxAdj = {}
@@ -301,7 +379,23 @@ for _,shape in ipairs(shapes) do
 	end
 	print(require'ext.tolua'(shape.vtxAdj))
 	--]]
-	-- [[
+	-- [[ basis transforms between vertexes
+	for i,v in ipairs(shape.vs) do
+		for j,xform in ipairs(shape.xforms) do
+			local v2 = xform * v
+			local k = table.find(shape.vs, nil, function(v)
+				return (v2 - v):normSq() < epsilon
+			end)
+			assert(k)
+			if k ~= i then
+--print(shape.name, i, k, v, v2, xform )
+				shape.vtxAdj[i][k] = true
+				shape.vtxAdj[k][i] = true
+			end
+		end
+	end
+	--]]
+	--[[
 	for i=1,#shape.vs do
 		for j=1,#shape.vs do
 			shape.vtxAdj[i][j] = true
