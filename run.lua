@@ -40,15 +40,15 @@ local shapes = {
 		},
 		xformBasis = {
 			{
-				{-.5, -1/(2*math.sqrt(3)), -math.sqrt(2/3)},
-				{1/(2*math.sqrt(3)), 5/6, -math.sqrt(2)/3},
-				{math.sqrt(2/3), -math.sqrt(2)/3, -1/3},
-			},
-			{
-				{-.5, -math.sqrt(3)/2, 0},
-				{math.sqrt(3)/2, -.5, 0},
+				{-.5, -sqrt3/2, 0},
+				{sqrt3/2, -.5, 0},
 				{0, 0, 1},
 			},
+			{
+				{-.5, -1/(2*sqrt3), -sqrt2/sqrt3},
+				{1/(2*sqrt3), 5/6, -sqrt2/3},
+				{sqrt2/sqrt3, -sqrt2/3, -1/3},
+			},	
 		},
 	},
 	{
@@ -230,15 +230,121 @@ local shapes = {
 			{15, 16, 18, 13, 7, 10, 9, 11, 3, 12, 17, 4, 6, 8, 2, 20, 19, 5, 14, 1},
 		},
 		xformBasis = {
+			
+				--[[ T2 ... is too far from T3 to ever make a face
+				{(-1+sqrt5)/4, -(1+sqrt5)/4, -1/2},
+				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
+				{1/2, (1-sqrt5)/4, (1+sqrt5)/4},
+				--]]
 			{
-				{(-1+math.sqrt(5))/4, -(1+math.sqrt(5))/4, -1/2},
-				{(1+math.sqrt(5))/4, 1/2, (1-math.sqrt(5))/4},
-				{1/2, (1-math.sqrt(5))/4, (1+math.sqrt(5))/4},
+				-- [[ T3 = too dense w/T2
+				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
+				{-1/2, -(1-sqrt5)/4, -(1+sqrt5)/4},
+				{(1-sqrt5)/4, (1+sqrt5)/4, 1/2},
+				--]]
 			},
 			{
-				{(1+math.sqrt(5))/4, 1/2, (1-math.sqrt(5))/4},
-				{-1/2, (-1+math.sqrt(5))/4, -(1+math.sqrt(5))/4},
-				{(1-math.sqrt(5))/4, (1+math.sqrt(5))/4, 1/2},
+				--[[ T4 = double-rotation of T2
+				{-(1+sqrt5)/4, -1/2, (1-sqrt5)/4},
+				{1/2, (1-sqrt5)/4, -(1+sqrt5)/4},
+				{-(1-sqrt5)/4, -(1+sqrt5)/4, 1/2},
+				--]]
+				-- [[ T5 = too dense w/T2, but works with T3
+				{1/2, (1-sqrt5)/4, -(1+sqrt5)/4},
+				{(1-sqrt5)/4, (1+sqrt5)/4, -1/2},
+				{(1+sqrt5)/4, 1/2, -(1-sqrt5)/4},
+				--]]
+				--[[ T6 = double-rotation of T2 (I guess in the opposite direction of T4)
+				-- sure enough this is the transpose of = inverse of T4
+				{-(1+sqrt5)/4, 1/2, -(1-sqrt5)/4},
+				{-1/2, (1-sqrt5)/4, -(1+sqrt5)/4},
+				{(1-sqrt5)/4, -(1+sqrt5)/4, 1/2},
+				--]]
+				--[[ T7 = too dense
+				{-1/2, (1-sqrt5)/4, -(1+sqrt5)/4},
+				{-(1-sqrt5)/4, (1+sqrt5)/4, -1/2},
+				{(1+sqrt5)/4, -1/2, (1-sqrt5)/4},
+				--]]
+				--[[ T8 = too dense
+				{0,-1,0},
+				{0,0,-1},
+				{1,0,0},
+				--]]
+				--[[ T9 = too dense
+				{0,0,-1},
+				{-1,0,0},
+				{0,1,0},
+				--]]
+				--[[ T10 = single-rotation of T2
+				{-(1-sqrt5)/4, (1+sqrt5)/4, 1/2},
+				{-(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
+				{-1/2, (1-sqrt5)/4, (1+sqrt5)/4},
+				--]]
+				--[[ T11 = too dense
+				{-(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
+				{1/2, -(1-sqrt5)/4, -(1+sqrt5)/4},
+				{(1-sqrt5)/4, -(1+sqrt5)/4, -1/2},
+				--]]
+				--[[ T12 = too dense
+				{-(1+sqrt5)/4, -1/2, -(1-sqrt5)/4},
+				{-1/2, -(1-sqrt5)/4, -(1+sqrt5)/4},
+				{-(1-sqrt5)/4, -(1+sqrt5)/4, -1/2},
+				--]]
+				--[[ T13 = too dense
+				{-1/2, -(1-sqrt5)/4, -(1+sqrt5)/4},
+				{(1-sqrt5)/4, (1+sqrt5)/4, 1/2},
+				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
+				--]]
+				--[[ T14 = too dense
+				{-1/2, (1-sqrt5)/4, (1+sqrt5)/4},
+				{(1-sqrt5)/4, -(1+sqrt5)/4, -1/2},
+				{(1+sqrt5)/4, -1/2, -(1-sqrt5)/4},
+				--]]
+				--[[ T15
+				{(1-sqrt5)/4, -(1+sqrt5)/4, -1/2},
+				{-(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
+				{1/2, -(1-sqrt5)/4, -(1+sqrt5)/4},
+				--]]
+				--[[
+				{0,1,0},
+				{0,0,-1},
+				{-1,0,0},
+				--]]
+				--[[
+				{0,0,1},
+				{-1,0,0},
+				{0,-1,0},
+				--]]
+				--[[
+				{-1,0,0},
+				{0,1,0},
+				{0,0,-1},
+				--]]
+				--[[
+				{0,1,0},
+				{0,0,1},
+				{1,0,0},
+				--]]
+				--[[
+				{-1,0,0},
+				{0,-1,0},
+				{0,0,1},
+				--]]
+				--[[
+				{1,0,0},
+				{0,-1,0},
+				{0,0,-1},
+				--]]
+				--[[
+				{0,-1,0},
+				{0,0,1},
+				{-1,0,0},
+				--]]
+				--[[
+				{0,0,1},
+				{1,0,0},
+				{0,-1,0},
+				--]]
 			}
 		},
 	},
@@ -322,14 +428,14 @@ local shapes = {
 		},
 		xformBasis = {
 			{
-				{(-1+math.sqrt(5))/4, -(1+math.sqrt(5))/4, -1/2},
-				{(1+math.sqrt(5))/4, 1/2, (1-math.sqrt(5))/4},
-				{1/2, (1-math.sqrt(5))/4, (1+math.sqrt(5))/4},
+				{(-1+sqrt5)/4, -(1+sqrt5)/4, -1/2},
+				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
+				{1/2, (1-sqrt5)/4, (1+sqrt5)/4},
 			},
 			{
-				{(1+math.sqrt(5))/4, 1/2, (1-math.sqrt(5))/4},
-				{-1/2, (-1+math.sqrt(5))/4, -(1+math.sqrt(5))/4},
-				{(1-math.sqrt(5))/4, (1+math.sqrt(5))/4, 1/2},
+				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
+				{-1/2, (-1+sqrt5)/4, -(1+sqrt5)/4},
+				{(1-sqrt5)/4, (1+sqrt5)/4, 1/2},
 			},
 		},
 	},
@@ -344,7 +450,7 @@ for _,shape in ipairs(shapes) do
 		shape.xformBasis[i] = matrix(shape.xformBasis[i])
 	end
 
-	-- build all basis ... ?
+	--[[ build all basis ... ?
 	shape.xforms = table(shape.xformBasis)
 	for i=1,math.huge do
 		local xform = shape.xforms[i]
@@ -362,6 +468,7 @@ for _,shape in ipairs(shapes) do
 		if not found then break end
 	end
 	assert.eq(#shape.xforms, #shape.vtxMulTable)
+--]]
 end
 
 for _,shape in ipairs(shapes) do
@@ -369,39 +476,59 @@ for _,shape in ipairs(shapes) do
 	for i=1,#shape.vs do
 		shape.vtxAdj[i] = {}
 	end
-	--[[
-	for i=1,3 do	-- only consider minimal transform basis
-		local row = vtxMulTable[i]
-		for _,j in ipairs(row) do
-			shape.vtxAdj[i][j] = true
-			shape.vtxAdj[j][i] = true
+		
+	local visited = table()
+	do
+		local function translate(v)
+			return matrix{
+				{1,0,0,v[1]},
+				{0,1,0,v[2]},
+				{0,0,1,v[3]},
+				{0,0,0,1}
+			}
 		end
-	end
-	print(require'ext.tolua'(shape.vtxAdj))
-	--]]
-	-- [[ basis transforms between vertexes
-	for i,v in ipairs(shape.vs) do
-		for j,xform in ipairs(shape.xforms) do
-			local v2 = xform * v
-			local k = table.find(shape.vs, nil, function(v)
-				return (v2 - v):normSq() < epsilon
+
+		local vInitIndex = 1
+		local vInit = shape.vs[vInitIndex]
+
+		-- init a 4x4 xform with the translation 'v' and rot 'xform', and use right-muls to traverse the surface
+		-- then whatever vtxs its translation matches up with, use those for the adjacency graph
+		local mInit = translate(vInit)
+
+		local function recurse(m, vIndex)
+			local visitedIndex = table.find(visited, nil, function(m1)
+				return (m - m1):normSq() < epsilon
 			end)
-			assert(k)
-			if k ~= i then
---print(shape.name, i, k, v, v2, xform )
-				shape.vtxAdj[i][k] = true
-				shape.vtxAdj[k][i] = true
+
+			if visitedIndex then return end
+			visited:insert(m:clone())
+
+			for _,xform in ipairs(shape.xformBasis) do
+				local xform4x4 = matrix{4,4}:lambda(function(i,j)
+					if i<=3 and j<=3 then return xform[i][j] end
+					return i==j and 1 or 0
+				end)
+				mNew = m * translate(-vInit) * xform4x4 * translate(vInit)
+
+				local vNew = matrix{3}:lambda(function(i) return mNew[i][4] end)
+				local vIndexNew = table.find(shape.vs, nil, function(v1)
+					return (vNew - v1):normSq() < epsilon
+				end)
+				if not vIndexNew then
+					error('failed to find vertex '..vNew)
+				end
+
+				if vIndex ~= vIndexNew then
+					shape.vtxAdj[vIndex][vIndexNew] = true
+					shape.vtxAdj[vIndexNew][vIndex] = true
+				end
+				
+				recurse(mNew, vIndexNew)
 			end
 		end
+		recurse(mInit, vInitIndex)
 	end
-	--]]
-	--[[
-	for i=1,#shape.vs do
-		for j=1,#shape.vs do
-			shape.vtxAdj[i][j] = true
-		end
-	end
-	--]]
+print('visited basis count', #visited)	
 end
 
 function App:initGL()
