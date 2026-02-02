@@ -8,6 +8,7 @@ local math = require 'ext.math'
 local op = require 'ext.op'
 local vec4i = require 'vec-ffi.vec4i'	-- or ui?
 local vec4f = require 'vec-ffi.vec4f'
+local quatf = require 'vec-ffi.quatf'
 local vec4x4f = require 'vec-ffi.vec4x4f'
 local gl = require 'gl.setup'(cmdline.gl)
 local GLTex2D = require 'gl.tex2d'
@@ -334,6 +335,13 @@ for _,shape in ipairs(shapes) do
 	end
 
 
+	local function vecToQuat(v)
+		local x,y = vecToBasis(v:normalize())
+		return quatf():fromMatrix{x,y,v}
+	end
+	shape.qs = table.mapi(shape.vs, vecToQuat)
+
+
 	shape.vtxBaseCount = #shape.vs
 
 
@@ -358,16 +366,20 @@ for _,shape in ipairs(shapes) do
 		z = 1e-3 * math.round(1e+3 * z)
 		return table{x,y,z}:concat','
 	end
+	
 	for i,v in ipairs(shape.vs) do
 		shape.vtxForKey[vtxKey(v)] = i
 	end
+	
 	local function findOrCreateVertex(v)
 		local key = vtxKey(v)
 		local i = shape.vtxForKey[key]
 		if not i then
 			i = #shape.vs + 1
 			shape.vtxForKey[key] = i
-			shape.vs[i] = matrix(v)
+			v = matrix(v)
+			shape.vs[i] = v
+			shape.qs[i] = vecToQuat(v)
 		end
 		return i
 	end
@@ -470,9 +482,9 @@ print('subdivIndex', subdivIndex)
 --]]
 		shape.subdivs:insert(subdiv)
 		assert.len(shape.subdivs, subdivIndex)
-	
 
-		subdiv.vtxsUsedIndexes = table()
+
+		-- build vtxsUsedSet / vtxsUsedIndexes / edges
 		subdiv.vtxsUsedSet = table()
 		for _,face in ipairs(subdiv.faces) do
 			for i,vi in ipairs(face) do
@@ -485,6 +497,37 @@ print('subdivIndex', subdivIndex)
 			end
 		end
 		subdiv.vtxsUsedIndexes = subdiv.vtxsUsedSet:keys():sort()
+	
+		
+		-- build vtxNbhds
+		subdiv.vtxNbhds = {}
+		for _,vertexIndex in ipairs(subdiv.vtxsUsedIndexes) do
+		
+			-- TODO cache these in order per vertex
+			local nbhdVtxIndexes = table()
+			for nbhdVtxIndex in pairs(subdiv.edges[vertexIndex]) do
+				if subdiv.vtxsUsedSet[nbhdVtxIndex] then
+					nbhdVtxIndexes:insert(nbhdVtxIndex)
+				end
+			end
+
+			-- now find basis for vertex
+			-- sort by angle
+			-- and find the one opposite this
+			local ex = shape.qs[vertexIndex]:xAxis()
+			local ey = shape.qs[vertexIndex]:yAxis()
+
+			ex = matrix{ex:unpack()}
+			ey = matrix{ey:unpack()}
+
+			nbhdVtxIndexes:sort(function(a,b)
+				local va = shape.vs[a]
+				local vb = shape.vs[b]
+				return math.atan2(va * ey, va * ex) 
+					< math.atan2(vb * ey, vb * ex)
+			end)
+			subdiv.vtxNbhds[vertexIndex] = nbhdVtxIndexes
+		end
 	end
 
 	-- [[ normalize new vtxs
@@ -599,20 +642,33 @@ print('onClick x='..x
 	..' vertexIndex='..vertexIndex
 )
 		local currentPlayer = assert.index(players, playerTurn)
+		
+		-- nothing is selected
 		if not selectedIndex  then
 			if playerTurn ~= playerIndex then return end
 			selectedIndex = pieceIndex
-		elseif selectedIndex == pieceIndex then
+	
+		-- something is selected
+		-- and we clicked the selected piece
+		elseif selectedIndex == pieceIndex
+		and playerTurn == playerIndex
+		then
 			selectedIndex = nil	-- deselect
 			if haveJumped then
 				takeNextTurn()
 			end
+		
+		-- something is selected
+		-- and we clicked somewhere else
 		else
 			local selectedPiece = assert.index(currentPlayer.pieces, selectedIndex)
 
+			-- clicked somewhere one tile away
 			if subdiv.edges[vertexIndex]
 			and subdiv.edges[vertexIndex][selectedPiece.vertexIndex] 
 			then -- and make sure it's one edge distance from selectedIndex
+				
+				-- clicked somewhere one tile away and empty
 				if playerIndex == -1
 				and pieceIndex == -1
 				then
@@ -623,40 +679,21 @@ print('onClick x='..x
 						vtxPieces[vertexIndex] = selectedPiece
 						takeNextTurn()
 					end
+			
+				-- clicked somewhere one tile away and full
 				else
 					-- if it's another piece ...
 					-- make sure it's one distance away ...
 					-- then hop over it.
 				
-					local otherPiecePlayer = assert.index(players, playerIndex)
-					local otherPiece = assert.index(otherPiecePlayer.pieces, pieceIndex)
+					--local otherPiecePlayer = assert.index(players, playerIndex)
+					--local otherPiece = assert.index(otherPiecePlayer.pieces, pieceIndex)
 					
 					-- now find the next step past this piece
 					print('clicked other piece')
 
-					-- TODO cache these in order per vertex
-					local nbhdVtxIndexes = table()
-					for nbhdVtxIndex in pairs(subdiv.edges[vertexIndex]) do
-						if subdiv.vtxsUsedSet[nbhdVtxIndex] then
-							nbhdVtxIndexes:insert(nbhdVtxIndex)
-						end
-					end
-				
-					-- now find basis for vertex
-					-- sort by angle
-					-- and find the one opposite this
-					local ex, ey = vecToBasis(shape.vs[vertexIndex])
-					
-					nbhdVtxIndexes:sort(function(a,b)
-						return math.atan2(
-							shape.vs[a] * ey,
-							shape.vs[a] * ex
-						) < math.atan2(
-							shape.vs[b] * ey,
-							shape.vs[b] * ex
-						)
-					end)
-					
+					local nbhdVtxIndexes = subdiv.vtxNbhds[vertexIndex]
+
 					print('source vertexIndex', selectedPiece.vertexIndex)
 					print('clicked vertexIndex', vertexIndex)
 					print('nbhd', nbhdVtxIndexes:concat', ')
@@ -674,6 +711,38 @@ print('onClick x='..x
 						selectedPiece.vertexIndex = jumpToVtxIndex
 						vtxPieces[jumpToVtxIndex] = selectedPiece
 						haveJumped = true
+					end
+				end
+			
+			-- clicked somewhere more than one tile away
+			else
+				-- first make sure its empty
+				if playerIndex == -1
+				and pieceIndex == -1
+				then
+					-- then check all possible neighborhoods around the selected tile
+					for _,nbhdVI in ipairs(subdiv.vtxNbhds[selectedPiece.vertexIndex]) do
+						-- see if they have a piece
+						if vtxPieces[nbhdVI] then
+							-- and then  see if any of their neighborhoods include this vertex
+							local nbhdVtxIndexes = subdiv.vtxNbhds[nbhdVI]
+							
+							local i = nbhdVtxIndexes:find(selectedPiece.vertexIndex)
+							-- and if so, skip that piece
+							if i then
+								i = ((i-1 + math.floor(#nbhdVtxIndexes/2)) % #nbhdVtxIndexes) + 1
+							
+								local jumpToVtxIndex = nbhdVtxIndexes[i]
+								
+								if jumpToVtxIndex == vertexIndex then
+									-- exchange places
+									vtxPieces[selectedPiece.vertexIndex] = nil
+									selectedPiece.vertexIndex = jumpToVtxIndex
+									vtxPieces[jumpToVtxIndex] = selectedPiece
+									haveJumped = true							
+								end
+							end
+						end
 					end
 				end
 			end
