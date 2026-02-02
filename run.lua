@@ -2,6 +2,7 @@
 local table = require 'ext.table'
 local assert = require 'ext.assert'
 local gl = require 'gl'
+local GLProgram = require 'gl.program'
 local GLArrayBuffer = require 'gl.arraybuffer'
 local GLSceneObject = require 'gl.sceneobject'
 local ig = require 'imgui'
@@ -221,7 +222,25 @@ end
 function App:initGL()
 	App.super.initGL(self)
 	gl.glClearColor(1,1,1,1)
-	
+
+	local program = GLProgram{
+		version = 'latest',
+		precision = 'best',
+		vertexCode = [[
+layout(location=0) in vec3 vertex;
+layout(location=0) uniform mat4 mvProjMat;
+void main() {
+	gl_Position = mvProjMat * vec4(vertex, 1.);
+}
+]],
+		fragmentCode = [[
+layout(location=0) out vec4 fragColor;
+void main() {
+	fragColor = vec4(0., 0., 0., 1.);
+}
+]],
+	}:useNone()
+
 	for _,shape in ipairs(shapes) do
 		local vtxs = table()
 		for _,v in ipairs(shape.vs) do
@@ -247,23 +266,7 @@ function App:initGL()
 		end
 
 		shape.globj = GLSceneObject{
-			program = {
-				version = 'latest',
-				precision = 'best',
-				vertexCode = [[
-layout(location=0) in vec3 vertex;
-layout(location=0) uniform mat4 mvProjMat;
-void main() {
-	gl_Position = mvProjMat * vec4(vertex, 1.);
-}
-]],
-				fragmentCode = [[
-layout(location=0) out vec4 fragColor;
-void main() {
-	fragColor = vec4(0., 0., 0., 1.);
-}
-]],
-			},
+			program = program,
 			vertexes = vtxGPU,
 			geometries = {
 				{
@@ -284,7 +287,6 @@ App.viewDist = 2
 
 function App:update(...)
 	gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-	self.view:setup(self.width / self.height)
 
 	gl.glEnable(gl.GL_BLEND)
 	gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ZERO)
