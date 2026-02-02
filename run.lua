@@ -5,12 +5,16 @@ local range = require 'ext.range'
 local assert = require 'ext.assert'
 local math = require 'ext.math'
 local op = require 'ext.op'
+local vec4i = require 'vec-ffi.vec4i'	-- or ui?
 local vec4f = require 'vec-ffi.vec4f'
 local vec4x4f = require 'vec-ffi.vec4x4f'
 local gl = require 'gl.setup'(cmdline.gl)
+local GLTex2D = require 'gl.tex2d'
+local GLFramebuffer = require 'gl.framebuffer'
 local GLProgram = require 'gl.program'
 local GLArrayBuffer = require 'gl.arraybuffer'
 local GLSceneObject = require 'gl.sceneobject'
+local sdl = require 'sdl'
 local ig = require 'imgui'
 local matrix = require 'matrix'
 
@@ -345,7 +349,7 @@ for _,shape in ipairs(shapes) do
 			local centerIndex = findOrCreateVertex(centerVtx)
 			for i=1,#face do
 				local i1 = face[i]
-				local i2 = face[(i%#face)+1]
+				local i2 = face[(i % #face) + 1]
 				subdiv:insert{centerIndex, i1, i2}
 			end
 		end
@@ -439,11 +443,17 @@ print('subdivIndex', subdivIndex)
 end
 
 local vars = {
+	numPlayers = 2,
 	shapeIndex = 3,
 	subdivIndex = 6,
+	nextSubdivIndex = 6,	-- for gui until you start the next game
 	numPieces = 1+12,
 }
+
+local playerTurn
+local selectedIndex
 local players
+local vtxPieces 
 
 local colors = table{
 	vec4f(1,0,0,1),
@@ -454,11 +464,13 @@ local colors = table{
 	vec4f(0,1,1,1),
 }
 
-local function initGame(numPlayers)
+local function initGame()
 	local shape = assert.index(shapes, vars.shapeIndex)
 
+	vtxPieces = {}	-- map from vertex index to piece
+
 	players = table()
-	for playerIndex=1,numPlayers do
+	for playerIndex=1,vars.numPlayers do
 		local vtxDists = range(#shape.vs):mapi(function(i)
 			local v = shape.vs[i]
 			local dist = 0
@@ -486,23 +498,101 @@ assert(vertexIndex)
 			end
 		end
 		vtxsUsed = table.keys(vtxsUsed)
-		vtxsUsed :sort(function(a,b)
+		vtxsUsed:sort(function(a,b)
 			return shape.vs[a]:dot(v1) < shape.vs[b]:dot(v1)
 		end)
 
+		vars.vtxsUsed = vtxsUsed
+
 		player.pieces = table(vtxsUsed)
 			:sub(1, vars.numPieces)
-			:mapi(function(i)
+			:mapi(function(vi, i)
 				return {
-					vertexIndex = i,
+					index = i,
+					playerIndex = playerIndex,
+					vertexIndex = vi,
 				}
 			end)
+
+		for _,piece in ipairs(player.pieces) do
+			vtxPieces[piece.vertexIndex] = piece
+		end
+	end
+
+	playerTurn = 1
+	onClick = function(x, y, playerIndex, pieceIndex, vertexIndex)
+		local currentPlayer = assert.index(players, playerTurn)
+		if not selectedIndex  then
+			if playerTurn ~= playerIndex then return end
+
+			selectedIndex = pieceIndex
+		elseif selectedIndex == pieceIndex then
+			selectedIndex = nil
+		else
+			if playerIndex == -1
+			and pieceIndex == -1
+			-- and make sure it's one edge distance from selectedIndex
+			then
+				-- exchange places
+
+				local selectedPiece = assert.index(currentPlayer.pieces, selectedIndex)
+
+				vtxPieces[selectedPiece.vertexIndex] = nil
+				selectedPiece.vertexIndex = vertexIndex
+				vtxPieces[vertexIndex] = selectedPiece
+
+				selectedIndex = nil
+			else
+				-- if it's another piece ...
+				-- make sure it's one distance away ...
+				-- then hop over it.
+			end
+		end
 	end
 end
 
+local selectedPieceColor = vec4f(1, .75, .5, 1)
 function App:initGL()
 	App.super.initGL(self)
-	gl.glClearColor(1,1,1,1)
+
+	
+	local billboardPointVtxBuf = GLArrayBuffer{
+		dim = 2,
+		data = {-1, -1, 1, -1, -1, 1, 1, 1},
+		usage = gl.GL_STATIC_DRAW,
+	}:unbind()
+
+	self.drawFBOObj = GLSceneObject{
+		program = {
+			version = 'latest',
+			precision = 'best',
+			vertexCode = [[
+layout(location=0) in vec2 vertex;
+out vec2 texcoordv;
+void main() {
+	texcoordv = vertex * .5 + .5;
+	gl_Position = vec4(vertex, 0., 1.);
+}
+]],
+			fragmentCode = [[
+in vec2 texcoordv;
+layout(location=0) out vec4 fragColor;
+uniform sampler2D fboTex;
+void main() {
+	fragColor = texture(fboTex, texcoordv);
+}
+]],
+		},
+		uniforms = {
+			fboTex = 0,
+		},
+		geometry = {
+			mode = gl.GL_TRIANGLE_STRIP,
+		},
+		vertexes = billboardPointVtxBuf,
+	}
+
+
 
 	local lineProgram = GLProgram{
 		version = 'latest',
@@ -519,8 +609,11 @@ void main() {
 ]],
 		fragmentCode = [[
 layout(location=0) out vec4 fragColor;
+layout(location=1) out ivec4 fragID;
+uniform ivec4 shapeID;
 void main() {
 	fragColor = vec4(0., 0., 0., 1.);
+	fragID = shapeID;
 }
 ]],
 	}:useNone()
@@ -543,10 +636,13 @@ void main() {
 		fragmentCode = [[
 layout(location=0) in vec3 vertexv;
 layout(location=0) out vec4 fragColor;
+layout(location=1) out ivec4 fragID;
 uniform vec4 color;
+uniform ivec4 shapeID;
 void main() {
 	float dot = max(abs(normalize(vertexv).z), .3);
 	fragColor = dot * color;
+	fragID = shapeID;
 }
 ]],
 	}:useNone()
@@ -564,6 +660,7 @@ void main() {
 		local vtxGPU = GLArrayBuffer{
 			dim = 3,
 			data = vtxs,
+			usage = gl.GL_STATIC_DRAW,
 		}:unbind()
 
 		shape.subdivObjs = table()
@@ -588,6 +685,7 @@ void main() {
 						viewMat = self.view.mvMat.ptr,
 						projMat = self.view.projMat.ptr,
 						color = {1,1,1,1},
+						shapeID = {-1,-1,-1,-1},
 					},
 				},
 				faceObj = GLSceneObject{
@@ -599,12 +697,16 @@ void main() {
 						viewMat = self.view.mvMat.ptr,
 						projMat = self.view.projMat.ptr,
 						color = {1,1,1,1},
+						shapeID = {-1,-1,-1,-1},
 					},
 				},
 			}
 		end
 	end
 
+
+	self:refreshFBO()
+	
 	-- these only work on desktop GL
 	-- in GLES3 desktop, neither glPointSize nor gl_PointSize works
 	-- in WebGL?
@@ -617,10 +719,67 @@ void main() {
 	initGame(2)
 end
 
-App.viewDist = 2
+function App:resize(...)
+	App.super.resize(self, ...)
+	self:refreshFBO()
+end
 
+
+
+function App:refreshFBO()
+	-- store color here
+	self.colorFBOTex = GLTex2D{
+		width = self.width,
+		height = self.height,
+		internalFormat = gl.GL_RGBA,
+		magFilter = gl.GL_LINEAR,
+		minFilter = gl.GL_NEAREST,
+	}:unbind()
+
+	-- write out IDs when you render to this texture
+	-- use it for click for detecting
+	self.clickIDFBOTex = GLTex2D{
+		width = self.width,
+		height = self.height,
+		internalFormat = gl.GL_RGBA32I,
+		magFilter = gl.GL_NEAREST,
+		minFilter = gl.GL_NEAREST,
+	}:unbind()
+
+
+	self.drawFBOObj.texs[1] = self.colorFBOTex
+
+	self.fbo = GLFramebuffer{
+		width = self.width,
+		height = self.height,
+		useDepth = true,
+	}
+		:bind()
+		-- TOOD how about together :setColorAttachmentsAndDrawBuffers to do both these things in one call?
+		:setColorAttachmentTex2D(self.colorFBOTex.id, 0)
+		:setColorAttachmentTex2D(self.clickIDFBOTex.id, 1)
+		:drawBuffers(gl.GL_COLOR_ATTACHMENT0, gl.GL_COLOR_ATTACHMENT1)
+		:unbind()
+end
+
+
+
+App.viewDist = 2
+local clearShapeID = vec4i(-1,-1,-1,-1) 
+local clearColor = vec4f(1,1,1,1)
+local shapeID = vec4i(-1,-1,-1,-1) 
 function App:update(...)
+	self.fbo:bind()
+	assert(self.fbo:check())
+
+	gl.glClearColor(1,1,1,1)
+	gl.glClearBufferfv(gl.GL_COLOR_BUFFER_BIT, 0, clearColor.s)
+	gl.glClearBufferiv(gl.GL_COLOR_BUFFER_BIT, 1, clearShapeID.s)
+
 	gl.glClear(bit.bor(gl.GL_COLOR_BUFFER_BIT, gl.GL_DEPTH_BUFFER_BIT))
+--	gl.glClear(gl.GL_DEPTH_BUFFER_BIT)
+	gl.glEnable(gl.GL_DEPTH_TEST)
+
 
 	self.modelMat:setIdent()
 
@@ -633,20 +792,41 @@ function App:update(...)
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
 	end
 
-	for _,player in ipairs(players) do
-		for _,piece in ipairs(player.pieces) do
-			self.modelMat
-				:setIdent()
-				:setTranslate(shape.vs[piece.vertexIndex]:unpack())
-				:applyScale(.1, .1, .1)
-
-			shapes[5].subdivObjs[0].faceObj:draw{
-				uniforms = {
-					color = player.color.s,
-				},
-			}
+	for _,vi in ipairs(vars.vtxsUsed) do
+		local piece = vtxPieces[vi]
+		local playerIndex = -1
+		local pieceIndex = -1
+		local color
+		if piece then
+			playerIndex = piece.playerIndex
+			pieceIndex = piece.index
+			if selectedIndex == pieceIndex then
+				color = selectedPieceColor.s
+			else
+				color = players[playerIndex].color.s
+			end
+		else
+			color = {0,0,0,0}
 		end
+		shapeID:set(playerIndex, pieceIndex, vi, 0)
+
+		self.modelMat
+			:setIdent()
+			:setTranslate(shape.vs[vi]:unpack())
+			:applyScale(.1, .1, .1)
+
+		shapes[5].subdivObjs[0].faceObj:draw{
+			uniforms = {
+				color = color,
+				shapeID = shapeID.s,
+			},
+		}
 	end
+
+	self.fbo:unbind()
+
+	gl.glDisable(gl.GL_DEPTH_TEST)
+	self.drawFBOObj:draw()
 
 	App.super.update(self, ...)
 end
@@ -654,17 +834,58 @@ end
 function App:updateGUI()
 	if ig.igBeginMainMenuBar() then
 		if ig.igBeginMenu'New Game' then
-			ig.luatableInputInt('subdiv', vars, 'subdivIndex')
-			for i,shape in ipairs(shapes) do
+			ig.luatableInputInt('subdiv', vars, 'nextSubdivIndex')
+			for shapeIndex,shape in ipairs(shapes) do
 				if ig.igButton(shape.name) then
-					vars.shapeIndex = i
-					initGame(2)
+					vars.subdivIndex = vars.nextSubdivIndex
+					vars.shapeIndex = shapeIndex
+					initGame()
 				end
 			end
 
 			ig.igEndMenu()
 		end
 		ig.igEndMainMenuBar()
+	end
+end
+
+local clickShapeID = vec4i()
+function App:event(e)
+	App.super.event(self, e)
+
+	-- same as in glapp.orbit
+	local canHandleMouse = not ig.igGetIO()[0].WantCaptureMouse
+	local canHandleKeyboard = not ig.igGetIO()[0].WantCaptureKeyboard
+
+	if canHandleMouse then
+		if e[0].type == sdl.SDL_EVENT_MOUSE_MOTION then
+	
+			--local readBuffer = GLGlobal:get'GL_READ_BUFFER'	-- GL_BACK ... is that always the default?
+			self.fbo:bind()
+			assert(self.fbo:check())
+			gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT1)
+
+			local mx = e[0].motion.x
+			local my = self.height - 1 - e[0].motion.y
+			gl.glReadPixels(mx, my, 1, 1, self.clickIDFBOTex.format, self.clickIDFBOTex.type, clickShapeID.s)
+
+			self.fbo:unbind()
+			--gl.glReadBuffer(readBuffer)
+			gl.glReadBuffer(gl.GL_BACK)
+
+--			print('mouse over', table{clickShapeID:unpack()}:mapi(function(x) return ('%08x'):format(x) end):concat',')
+		elseif e[0].type == sdl.SDL_EVENT_MOUSE_BUTTON_DOWN then
+			if e[0].button.button == 1 then
+				print('clicked on ', clickShapeID)
+				if onClick then
+					onClick(
+						tonumber(e[0].button.x)/self.width,
+						tonumber(e[0].button.y)/self.height,
+						clickShapeID:unpack()
+					)
+				end
+			end
+		end
 	end
 end
 
