@@ -1,8 +1,12 @@
 #!/usr/bin/env luajit
 local cmdline = require 'ext.cmdline'(...)
 local table = require 'ext.table'
+local range = require 'ext.range'
 local assert = require 'ext.assert'
+local math = require 'ext.math'
 local op = require 'ext.op'
+local vec4f = require 'vec-ffi.vec4f'
+local vec4x4f = require 'vec-ffi.vec4x4f'
 local gl = require 'gl.setup'(cmdline.gl)
 local GLProgram = require 'gl.program'
 local GLArrayBuffer = require 'gl.arraybuffer'
@@ -11,8 +15,6 @@ local ig = require 'imgui'
 local matrix = require 'matrix'
 
 local App = require 'imgui.appwithorbit'():subclass()
-
-local shapeIndex = 1
 
 local sqrt2 = math.sqrt(2)
 local sqrt3 = math.sqrt(3)
@@ -257,7 +259,7 @@ for _,shape in ipairs(shapes) do
 						if j == vtxIndexes[1]
 						and #vtxIndexes >= 3
 						then
-							-- only if all vtxs are on the same side of this 
+							-- only if all vtxs are on the same side of this
 							local allOnOneSide = true
 							local v1 = shape.vs[vtxIndexes[1]]
 							for k,vk in ipairs(shape.vs) do
@@ -295,11 +297,12 @@ for _,shape in ipairs(shapes) do
 	end
 
 
+	shape.vtxBaseCount = #shape.vs
+
+
 	-- ok at this point ...
 	-- subdivision ...
 	shape.subdivs = table()
-
-	
 
 	-- maybe for subdivisions, maintaining adjacency doesn't matter, instead draw it with glPolygonMode
 	-- https://en.wikipedia.org/wiki/Geodesic_polyhedron
@@ -309,15 +312,37 @@ for _,shape in ipairs(shapes) do
 		assert.len(face, n)
 	end
 
+	-- goes slow, TODO use key hash
+	shape.vtxForKey = {}
+	local function vtxKey(v)
+		local x,y,z = v:unpack()
+		x = 1e-3 * math.round(1e+3 * x)
+		y = 1e-3 * math.round(1e+3 * y)
+		z = 1e-3 * math.round(1e+3 * z)
+		return table{x,y,z}:concat','
+	end
+	for i,v in ipairs(shape.vs) do
+		shape.vtxForKey[vtxKey(v)] = i
+	end
+	local function findOrCreateVertex(v)
+		local key = vtxKey(v)
+		local i = shape.vtxForKey[key]
+		if not i then
+			i = #shape.vs + 1
+			shape.vtxForKey[key] = i
+			shape.vs[i] = matrix(v)
+		end
+		return i
+	end
+
 	if n == 3 then
 		shape.subdivs[1] = shape.faces:mapi(function(face) return table(face) end)
 	else
 		local subdiv = table()
 		for _,face in ipairs(shape.faces) do
 			local vtxs = face:mapi(function(i) return shape.vs[i] end)
-			local centerVtx = vtxs:sum() / #vtxs 
-			local centerIndex = #shape.vs + 1
-			shape.vs[centerIndex] = centerVtx
+			local centerVtx = vtxs:sum() / #vtxs
+			local centerIndex = findOrCreateVertex(centerVtx)
 			for i=1,#face do
 				local i1 = face[i]
 				local i2 = face[(i%#face)+1]
@@ -333,6 +358,7 @@ for _,shape in ipairs(shapes) do
 	-- dodecahedron has 5-sided objects
 	-- how do you do opposing vertexes on a face?
 	for subdivIndex=2,10 do
+print('subdivIndex', subdivIndex)
 		local subdiv = table()
 --[[ divide the previous iterations
 		for _,face in ipairs(shape.subdivs[subdivIndex-1]) do
@@ -342,14 +368,13 @@ for _,shape in ipairs(shapes) do
 				local i1 = face[i]
 				local i2 = face[(i%#face)+1]
 				local edgeCenterVtx = (shape.vs[i1] + shape.vs[i2]) * .5
-				local edgeCenterIndex = #shape.vs + 1
+				local edgeCenterIndex = findOrCreateVertex(edgeCenterVtx)
 				edgeCenterIndexes:insert(edgeCenterIndex)
-				shape.vs[edgeCenterIndex] = edgeCenterVtx
 			end
 			assert.len(edgeCenterIndexes, 3)
 			local f1, f2, f3 = table.unpack(face)
 			local e1, e2, e3 = edgeCenterIndexes:unpack()
-			subdiv:insert{e3, f1, e1}	
+			subdiv:insert{e3, f1, e1}
 			subdiv:insert{e1, f2, e2}
 			subdiv:insert{e2, f3, e3}
 			subdiv:insert{e1, e2, e3}
@@ -373,19 +398,7 @@ for _,shape in ipairs(shapes) do
 				for j=0,edgeDivs-i do
 					local fj = j / edgeDivs
 					local v = v1 + da * fi + db * fj
-					-- [[
-					if i == 0 and j == 0 then
-						patchIndexes[i][j] = f1
-					elseif i == edgeDivs and j == 0 then
-						patchIndexes[i][j] = f2
-					elseif i == edgeDivs and j == edgeDivs then
-						patchIndexes[i][j] = f2
-					else
-					--]] do
-						local vi = #shape.vs + 1
-						shape.vs[vi] = v
-						patchIndexes[i][j] = vi
-					end
+					patchIndexes[i][j] = findOrCreateVertex(v)
 				end
 			end
 			for i=0,edgeDivs-1 do
@@ -418,7 +431,7 @@ for _,shape in ipairs(shapes) do
 		assert.len(shape.subdivs, subdivIndex)
 	end
 
-	--[[ normalize new vtxs
+	-- [[ normalize new vtxs
 	for i=1,#shape.vs do
 		shape.vs[i] = shape.vs[i]:normalize()
 	end
@@ -426,8 +439,67 @@ for _,shape in ipairs(shapes) do
 end
 
 local vars = {
-	subdivIndex = 0,
+	shapeIndex = 3,
+	subdivIndex = 6,
+	numPieces = 1+12,
 }
+local players
+
+local colors = table{
+	vec4f(1,0,0,1),
+	vec4f(0,1,0,1),
+	vec4f(0,0,1,1),
+	vec4f(1,1,0,1),
+	vec4f(1,0,1,1),
+	vec4f(0,1,1,1),
+}
+
+local function initGame(numPlayers)
+	local shape = assert.index(shapes, vars.shapeIndex)
+
+	players = table()
+	for playerIndex=1,numPlayers do
+		local vtxDists = range(#shape.vs):mapi(function(i)
+			local v = shape.vs[i]
+			local dist = 0
+			for _,oplayer in ipairs(players) do
+				dist = dist + (shape.vs[oplayer.vertexIndex] - v):norm()	-- TODO arclen
+			end
+			return dist
+		end)
+		local vertexIndex = select(2, table.sup(vtxDists))
+assert(vertexIndex)
+
+		local player = {
+			playerIndex = playerIndex,
+			vertexIndex = vertexIndex,
+			color = assert.index(colors, playerIndex),
+		}
+		players:insert(player)
+
+		local v1 = shape.vs[vertexIndex]
+		local faces = shape.subdivs[vars.subdivIndex]
+		local vtxsUsed = {}
+		for _,face in ipairs(faces) do
+			for _,vi in ipairs(face) do
+				vtxsUsed[vi] = true
+			end
+		end
+		vtxsUsed = table.keys(vtxsUsed)
+		vtxsUsed :sort(function(a,b)
+			return shape.vs[a]:dot(v1) < shape.vs[b]:dot(v1)
+		end)
+
+		player.pieces = table(vtxsUsed)
+			:sub(1, vars.numPieces)
+			:mapi(function(i)
+				return {
+					vertexIndex = i,
+				}
+			end)
+	end
+end
+
 function App:initGL()
 	App.super.initGL(self)
 	gl.glClearColor(1,1,1,1)
@@ -437,10 +509,11 @@ function App:initGL()
 		precision = 'best',
 		vertexCode = [[
 layout(location=0) in vec3 vertex;
-uniform mat4 mvMat;
+uniform mat4 modelMat;
+uniform mat4 viewMat;
 uniform mat4 projMat;
 void main() {
-	gl_Position = projMat * (mvMat * vec4(vertex, 1.));
+	gl_Position = projMat * (viewMat * (modelMat * vec4(vertex, 1.)));
 	gl_PointSize = 7.;
 }
 ]],
@@ -458,23 +531,27 @@ void main() {
 		vertexCode = [[
 layout(location=0) in vec3 vertex;
 layout(location=0) out vec3 vertexv;
-uniform mat4 mvMat;
+uniform mat4 modelMat;
+uniform mat4 viewMat;
 uniform mat4 projMat;
 void main() {
-	vertexv = (mvMat * vec4(vertex, 0.)).xyz;
-	gl_Position = projMat * (mvMat * vec4(vertex, 1.));
+	vertexv = (modelMat * vec4(vertex, 0.)).xyz;
+	gl_Position = projMat * (viewMat * (modelMat * vec4(vertex, 1.)));
 	gl_PointSize = 7.;
 }
 ]],
 		fragmentCode = [[
 layout(location=0) in vec3 vertexv;
 layout(location=0) out vec4 fragColor;
+uniform vec4 color;
 void main() {
 	float dot = max(abs(normalize(vertexv).z), .3);
-	fragColor = vec4(dot, 0., 0., 1.);
+	fragColor = dot * color;
 }
 ]],
 	}:useNone()
+
+	self.modelMat = vec4x4f():setIdent()
 
 	for _,shape in ipairs(shapes) do
 
@@ -507,8 +584,10 @@ void main() {
 					vertexes = vtxGPU,
 					geometries = faceGeoms,
 					uniforms = {
-						mvMat = self.view.mvMat.ptr,
+						modelMat = self.modelMat.ptr,
+						viewMat = self.view.mvMat.ptr,
 						projMat = self.view.projMat.ptr,
+						color = {1,1,1,1},
 					},
 				},
 				faceObj = GLSceneObject{
@@ -516,13 +595,14 @@ void main() {
 					vertexes = vtxGPU,
 					geometries = faceGeoms,
 					uniforms = {
-						mvMat = self.view.mvMat.ptr,
+						modelMat = self.modelMat.ptr,
+						viewMat = self.view.mvMat.ptr,
 						projMat = self.view.projMat.ptr,
+						color = {1,1,1,1},
 					},
 				},
 			}
 		end
-
 	end
 
 	-- these only work on desktop GL
@@ -533,6 +613,8 @@ void main() {
 	end
 	gl.glEnable(gl.GL_DEPTH_TEST)
 	gl.glLineWidth(2)
+
+	initGame(2)
 end
 
 App.viewDist = 2
@@ -540,13 +622,30 @@ App.viewDist = 2
 function App:update(...)
 	gl.glClear(bit.bor(gl.GL_COLOR_BUFFER_BIT, gl.GL_DEPTH_BUFFER_BIT))
 
-	local shape = shapes[shapeIndex]
-	local shapeObjs = shape.subdivObjs[vars.subdivIndex]
-	if shapeObjs then
-		shapeObjs.faceObj:draw()
+	self.modelMat:setIdent()
+
+	local shape = shapes[vars.shapeIndex]
+	local shapeObj = shape.subdivObjs[vars.subdivIndex]
+	if shapeObj then
+		shapeObj.faceObj:draw()
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
-		shapeObjs.lineObj:draw()
+		shapeObj.lineObj:draw()
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+	end
+
+	for _,player in ipairs(players) do
+		for _,piece in ipairs(player.pieces) do
+			self.modelMat
+				:setIdent()
+				:setTranslate(shape.vs[piece.vertexIndex]:unpack())
+				:applyScale(.1, .1, .1)
+
+			shapes[5].subdivObjs[0].faceObj:draw{
+				uniforms = {
+					color = player.color.s,
+				},
+			}
+		end
 	end
 
 	App.super.update(self, ...)
@@ -554,14 +653,15 @@ end
 
 function App:updateGUI()
 	if ig.igBeginMainMenuBar() then
-		if ig.igBeginMenu'shape' then
+		if ig.igBeginMenu'New Game' then
+			ig.luatableInputInt('subdiv', vars, 'subdivIndex')
 			for i,shape in ipairs(shapes) do
 				if ig.igButton(shape.name) then
-					shapeIndex = i
+					vars.shapeIndex = i
+					initGame(2)
 				end
 			end
-			
-			ig.luatableInputInt('subdiv', vars, 'subdivIndex')
+
 			ig.igEndMenu()
 		end
 		ig.igEndMainMenuBar()
