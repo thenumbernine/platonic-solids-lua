@@ -293,20 +293,92 @@ for _,shape in ipairs(shapes) do
 		vtxIndexes:insert(i)
 		recurse(vtxIndexes)
 	end
+
+
+	-- ok at this point ...
+	-- subdivision ...
+	shape.subdivs = table()
+
+	
+
+	-- maybe for subdivisions, maintaining adjacency doesn't matter, instead draw it with glPolygonMode
+	-- https://en.wikipedia.org/wiki/Geodesic_polyhedron
+	-- first subdivision of cube and dodecahedron needs to triangulation ...
+	local n = #shape.faces[1]
+	for _,face in ipairs(shape.faces) do
+		assert.len(face, n)
+	end
+
+	if n == 3 then
+		shape.subdivs[1] = shape.faces:mapi(function(face) return table(face) end)
+	else
+		local subdiv = table()
+		for _,face in ipairs(shape.faces) do
+			local vtxs = face:mapi(function(i) return shape.vs[i] end)
+			local centerVtx = vtxs:sum() / #vtxs 
+			local centerIndex = #shape.vs + 1
+			shape.vs[centerIndex] = centerVtx
+			for i=1,#face do
+				local i1 = face[i]
+				local i2 = face[(i%#face)+1]
+				subdiv:insert{centerIndex, i1, i2}
+			end
+		end
+		shape.subdivs:insert(subdiv)
+		assert.len(shape.subdivs, 1)
+	end
+
+	-- ok now subdiv using "class 1"
+	-- but really
+	-- dodecahedron has 5-sided objects
+	-- how do you do opposing vertexes on a face?
+	for subdivIndex=2,5 do
+		local subdiv = table()
+		for _,face in ipairs(shape.subdivs[subdivIndex-1]) do
+			assert.len(face, 3)
+			local edgeCenterIndexes = table()
+			for i=1,#face do
+				local i1 = face[i]
+				local i2 = face[(i%#face)+1]
+				local edgeCenterVtx = (shape.vs[i1] + shape.vs[i2]) * .5
+				local edgeCenterIndex = #shape.vs + 1
+				edgeCenterIndexes:insert(edgeCenterIndex)
+				shape.vs[edgeCenterIndex] = edgeCenterVtx
+			end
+			assert.len(edgeCenterIndexes, 3)
+			local f1, f2, f3 = table.unpack(face)
+			local e1, e2, e3 = edgeCenterIndexes:unpack()
+			subdiv:insert{e3, f1, e1}	
+			subdiv:insert{e1, f2, e2}
+			subdiv:insert{e2, f3, e3}
+			subdiv:insert{e1, e2, e3}
+		end
+		shape.subdivs:insert(subdiv)
+		assert.len(shape.subdivs, subdivIndex)
+	end
+
+	-- normalize new vtxs
+	for i=1,#shape.vs do
+		shape.vs[i] = shape.vs[i]:normalize()
+	end
 end
 
+local vars = {
+	subdivIndex = 0,
+}
 function App:initGL()
 	App.super.initGL(self)
 	gl.glClearColor(1,1,1,1)
 
-	local pointAndLineProgram = GLProgram{
+	local lineProgram = GLProgram{
 		version = 'latest',
 		precision = 'best',
 		vertexCode = [[
 layout(location=0) in vec3 vertex;
-layout(location=0) uniform mat4 mvProjMat;
+uniform mat4 mvMat;
+uniform mat4 projMat;
 void main() {
-	gl_Position = mvProjMat * vec4(vertex, 1.);
+	gl_Position = projMat * (mvMat * vec4(vertex, 1.));
 	gl_PointSize = 7.;
 }
 ]],
@@ -323,16 +395,21 @@ void main() {
 		precision = 'best',
 		vertexCode = [[
 layout(location=0) in vec3 vertex;
-layout(location=0) uniform mat4 mvProjMat;
+layout(location=0) out vec3 vertexv;
+uniform mat4 mvMat;
+uniform mat4 projMat;
 void main() {
-	gl_Position = mvProjMat * vec4(vertex, 1.);
+	vertexv = (mvMat * vec4(vertex, 0.)).xyz;
+	gl_Position = projMat * (mvMat * vec4(vertex, 1.));
 	gl_PointSize = 7.;
 }
 ]],
 		fragmentCode = [[
+layout(location=0) in vec3 vertexv;
 layout(location=0) out vec4 fragColor;
 void main() {
-	fragColor = vec4(1., 0., 0., 1.);
+	float dot = max(abs(normalize(vertexv).z), .3);
+	fragColor = vec4(dot, 0., 0., 1.);
 }
 ]],
 	}:useNone()
@@ -350,52 +427,40 @@ void main() {
 			data = vtxs,
 		}:unbind()
 
-		local indexes = table()
-		for i=1,#shape.vs-1 do
-			for j=i+1,#shape.vs do
-				if (shape.vtxAdj[i] and shape.vtxAdj[i][j])
-				or (shape.vtxAdj[j] and shape.vtxAdj[j][i])
-				then
-					indexes:insert(i-1)
-					indexes:insert(j-1)
-				end
-			end
-		end
-
-		shape.pointAndLineObj = GLSceneObject{
-			program = pointAndLineProgram,
-			vertexes = vtxGPU,
-			geometries = table{
-				{
-					mode = gl.GL_POINTS,
-				},
-				{
-					mode = gl.GL_LINES,
-					indexes = {
-						data = indexes,
-					},
-				},
-			},
-			uniforms = {
-				mvProjMat = self.view.mvProjMat.ptr,
-			},
-		}
-
-		shape.faceObj = GLSceneObject{
-			program = faceProgram,
-			vertexes = vtxGPU,
-			geometries = shape.faces:mapi(function(face)
+		shape.subdivObjs = table()
+		for subdivIndex=0,#shape.subdivs do
+			local faceGeoms = (shape.subdivs[subdivIndex] or shape.faces):mapi(function(face)
 				return {
-					mode = gl.GL_POLYGON,
+					--mode = gl.GL_POLYGON,		-- not in GLES3
+					mode = gl.GL_TRIANGLE_FAN,	-- GLES3
 					indexes = {
 						data = table.mapi(face, function(i) return i-1 end),
 					},
 				}
-			end),
-			uniforms = {
-				mvProjMat = self.view.mvProjMat.ptr,
-			},
-		}
+			end)
+
+			shape.subdivObjs[subdivIndex] = {
+				lineObj = GLSceneObject{
+					program = lineProgram,
+					vertexes = vtxGPU,
+					geometries = faceGeoms,
+					uniforms = {
+						mvMat = self.view.mvMat.ptr,
+						projMat = self.view.projMat.ptr,
+					},
+				},
+				faceObj = GLSceneObject{
+					program = faceProgram,
+					vertexes = vtxGPU,
+					geometries = faceGeoms,
+					uniforms = {
+						mvMat = self.view.mvMat.ptr,
+						projMat = self.view.projMat.ptr,
+					},
+				},
+			}
+		end
+
 	end
 
 	-- these only work on desktop GL
@@ -413,8 +478,13 @@ function App:update(...)
 	gl.glClear(bit.bor(gl.GL_COLOR_BUFFER_BIT, gl.GL_DEPTH_BUFFER_BIT))
 
 	local shape = shapes[shapeIndex]
-	shape.faceObj:draw()
-	shape.pointAndLineObj:draw()
+	local shapeObjs = shape.subdivObjs[vars.subdivIndex]
+	if shapeObjs then
+		shapeObjs.faceObj:draw()
+		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
+		shapeObjs.lineObj:draw()
+		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+	end
 
 	App.super.update(self, ...)
 end
@@ -427,6 +497,8 @@ function App:updateGUI()
 					shapeIndex = i
 				end
 			end
+			
+			ig.luatableInputInt('subdiv', vars, 'subdivIndex')
 			ig.igEndMenu()
 		end
 		ig.igEndMainMenuBar()
