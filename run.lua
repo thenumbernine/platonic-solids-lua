@@ -226,12 +226,10 @@ for _,shape in ipairs(shapes) do
 
 	-- determine polys:
 	-- group vtxs/edges by planar and traverse?
-	print()
-	print(shape.name)
-	local faces = table()	-- table of faces in-order
+	shape.faces = table()	-- table of faces in-order
 	local facesets = {}		-- sets of faces ,keys are faces-in-order concat with ,
 	for i=1,#shape.vs do
-		local function recurse(vtxIndexes, normal)
+		local function recurse(vtxIndexes, normal, flip)
 			local i = vtxIndexes:last()
 			for j=1,#shape.vs do
 				local nextNormal = normal
@@ -245,7 +243,8 @@ for _,shape in ipairs(shapes) do
 							local v2 = shape.vs[vtxIndexes[2]]
 							local v3 = shape.vs[vtxIndexes[3]]
 							nextNormal = (v3 - v2):cross(v2 - v1):normalize()
-							if nextNormal:dot(v1) < 0 then
+							flip = nextNormal:dot(v1) < 0		-- flip means flip the order of vtxs when you're done
+							if flip then
 								nextNormal = -nextNormal
 							end
 						end
@@ -272,15 +271,18 @@ for _,shape in ipairs(shapes) do
 								local facekey = table(vtxIndexes):sort():concat','
 								if not facesets[facekey] then
 									facesets[facekey] = true
-									faces:insert(table(vtxIndexes))
+									shape.faces:insert(
+										flip
+										and table(vtxIndexes):reverse()
+										or table(vtxIndexes)
+									)
 								end
 							end
-						
 						else
 							if not vtxIndexes:find(j) then
 								local nextVtxIndexes = table(vtxIndexes)
 								nextVtxIndexes:insert(j)
-								recurse(nextVtxIndexes, nextNormal)
+								recurse(nextVtxIndexes, nextNormal, flip)
 							end
 						end
 					end
@@ -291,14 +293,13 @@ for _,shape in ipairs(shapes) do
 		vtxIndexes:insert(i)
 		recurse(vtxIndexes)
 	end
-	print(require 'ext.tolua'(faces))
 end
 
 function App:initGL()
 	App.super.initGL(self)
 	gl.glClearColor(1,1,1,1)
 
-	local program = GLProgram{
+	local pointAndLineProgram = GLProgram{
 		version = 'latest',
 		precision = 'best',
 		vertexCode = [[
@@ -313,6 +314,25 @@ void main() {
 layout(location=0) out vec4 fragColor;
 void main() {
 	fragColor = vec4(0., 0., 0., 1.);
+}
+]],
+	}:useNone()
+
+	local faceProgram = GLProgram{
+		version = 'latest',
+		precision = 'best',
+		vertexCode = [[
+layout(location=0) in vec3 vertex;
+layout(location=0) uniform mat4 mvProjMat;
+void main() {
+	gl_Position = mvProjMat * vec4(vertex, 1.);
+	gl_PointSize = 7.;
+}
+]],
+		fragmentCode = [[
+layout(location=0) out vec4 fragColor;
+void main() {
+	fragColor = vec4(1., 0., 0., 1.);
 }
 ]],
 	}:useNone()
@@ -342,10 +362,10 @@ void main() {
 			end
 		end
 
-		shape.globj = GLSceneObject{
-			program = program,
+		shape.pointAndLineObj = GLSceneObject{
+			program = pointAndLineProgram,
 			vertexes = vtxGPU,
-			geometries = {
+			geometries = table{
 				{
 					mode = gl.GL_POINTS,
 				},
@@ -356,6 +376,25 @@ void main() {
 					},
 				},
 			},
+			uniforms = {
+				mvProjMat = self.view.mvProjMat.ptr,
+			},
+		}
+
+		shape.faceObj = GLSceneObject{
+			program = faceProgram,
+			vertexes = vtxGPU,
+			geometries = shape.faces:mapi(function(face)
+				return {
+					mode = gl.GL_POLYGON,
+					indexes = {
+						data = table.mapi(face, function(i) return i-1 end),
+					},
+				}
+			end),
+			uniforms = {
+				mvProjMat = self.view.mvProjMat.ptr,
+			},
 		}
 	end
 
@@ -365,21 +404,17 @@ void main() {
 	if op.safeindex(gl, 'GL_PROGRAM_POINT_SIZE') then
 		gl.glEnable(gl.GL_PROGRAM_POINT_SIZE)
 	end
-	if op.safeindex(gl, 'GL_POINT_SMOOTH') then
-		gl.glEnable(gl.GL_POINT_SMOOTH)
-	end
-	gl.glEnable(gl.GL_BLEND)
-	gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ZERO)
+	gl.glEnable(gl.GL_DEPTH_TEST)
 end
 
 App.viewDist = 2
 
 function App:update(...)
-	gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+	gl.glClear(bit.bor(gl.GL_COLOR_BUFFER_BIT, gl.GL_DEPTH_BUFFER_BIT))
 
 	local shape = shapes[shapeIndex]
-	shape.globj.uniforms.mvProjMat = self.view.mvProjMat.ptr,
-	shape.globj:draw()
+	shape.faceObj:draw()
+	shape.pointAndLineObj:draw()
 
 	App.super.update(self, ...)
 end
@@ -395,30 +430,6 @@ function App:updateGUI()
 			ig.igEndMenu()
 		end
 		ig.igEndMainMenuBar()
-	end
-
-	local shape = shapes[shapeIndex]
-	for i,v in ipairs(shape.vs) do
-		local x,y,z,w = self.view.mvProjMat:mul4x4v4(v:unpack())
-		x = (.5 + .5 * x/w) * self.width
-		y = (.5 - .5 * y/w) * self.height
-	
-		ig.igSetNextWindowPos(
-			ig.ImVec2(x,y),
-			0,
-			ig.ImVec2()
-		)
-		ig.igBegin(
-			tostring(i),
-			nil,
-			bit.bor(
-				ig.ImGuiWindowFlags_NoDecoration,
-				ig.ImGuiWindowFlags_Tooltip
-			)
-		)
-		ig.igText(tostring(i))
-
-		ig.igEnd()
 	end
 end
 
