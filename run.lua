@@ -339,8 +339,26 @@ for _,shape in ipairs(shapes) do
 		return i
 	end
 
+	local function setFaceAdj(subdiv, i,j,k)
+		subdiv.vtxAdj = subdiv.vtxAdj or {}
+		subdiv.vtxAdj[i] = subdiv.vtxAdj[i] or {}
+		subdiv.vtxAdj[j] = subdiv.vtxAdj[j] or {}
+		subdiv.vtxAdj[k] = subdiv.vtxAdj[k] or {}
+		subdiv.vtxAdj[i][j] = true
+		subdiv.vtxAdj[j][i] = true
+		subdiv.vtxAdj[i][k] = true
+		subdiv.vtxAdj[k][i] = true
+		subdiv.vtxAdj[j][k] = true
+		subdiv.vtxAdj[k][j] = true
+	end
+
 	if n == 3 then
-		shape.subdivs[1] = shape.faces:mapi(function(face) return table(face) end)
+		local subdiv = table()
+		for i,face in ipairs(shape.faces) do
+			setFaceAdj(subdiv, table.unpack(face))
+			subdiv[i] = table(face)
+		end
+		shape.subdivs[1] = subdiv
 	else
 		local subdiv = table()
 		for _,face in ipairs(shape.faces) do
@@ -351,6 +369,7 @@ for _,shape in ipairs(shapes) do
 				local i1 = face[i]
 				local i2 = face[(i % #face) + 1]
 				subdiv:insert{centerIndex, i1, i2}
+				setFaceAdj(subdiv, centerIndex, i1, i2)
 			end
 		end
 		shape.subdivs:insert(subdiv)
@@ -379,9 +398,13 @@ print('subdivIndex', subdivIndex)
 			local f1, f2, f3 = table.unpack(face)
 			local e1, e2, e3 = edgeCenterIndexes:unpack()
 			subdiv:insert{e3, f1, e1}
+			setFaceAdj(subdiv, e3, f1, e1)
 			subdiv:insert{e1, f2, e2}
+			setFaceAdj(subdiv, e1, f2, e2)
 			subdiv:insert{e2, f3, e3}
+			setFaceAdj(subdiv, e2, f3, e3)
 			subdiv:insert{e1, e2, e3}
+			setFaceAdj(subdiv, e1, e2, e3)
 		end
 --]]
 -- [[ redivide the original edge
@@ -416,6 +439,12 @@ print('subdivIndex', subdivIndex)
 							patchIndexes[i+1][j],
 							patchIndexes[i][j+1],
 						}
+						setFaceAdj(
+							subdiv, 
+							patchIndexes[i][j],
+							patchIndexes[i+1][j],
+							patchIndexes[i][j+1]
+						)
 					end
 					if patchIndexes[i][j+1]
 					and patchIndexes[i+1][j]
@@ -426,6 +455,12 @@ print('subdivIndex', subdivIndex)
 							patchIndexes[i+1][j],
 							patchIndexes[i+1][j+1],
 						}
+						setFaceAdj(
+							subdiv, 
+							patchIndexes[i][j+1],
+							patchIndexes[i+1][j],
+							patchIndexes[i+1][j+1]
+						)
 					end
 				end
 			end
@@ -453,6 +488,7 @@ local vars = {
 local playerTurn
 local selectedIndex
 local players
+local vtxsUsed
 local vtxPieces 
 
 local colors = table{
@@ -467,7 +503,17 @@ local colors = table{
 local function initGame()
 	local shape = assert.index(shapes, vars.shapeIndex)
 
+	local faces = shape.subdivs[vars.subdivIndex]
+	vtxsUsed = {}
+	for _,face in ipairs(faces) do
+		for _,vi in ipairs(face) do
+			vtxsUsed[vi] = true
+		end
+	end
+
 	vtxPieces = {}	-- map from vertex index to piece
+
+	selectedIndex = nil
 
 	players = table()
 	for playerIndex=1,vars.numPlayers do
@@ -490,21 +536,12 @@ assert(vertexIndex)
 		players:insert(player)
 
 		local v1 = shape.vs[vertexIndex]
-		local faces = shape.subdivs[vars.subdivIndex]
-		local vtxsUsed = {}
-		for _,face in ipairs(faces) do
-			for _,vi in ipairs(face) do
-				vtxsUsed[vi] = true
-			end
-		end
-		vtxsUsed = table.keys(vtxsUsed)
-		vtxsUsed:sort(function(a,b)
+		local vtxsSorted = table.keys(vtxsUsed)
+		vtxsSorted:sort(function(a,b)
 			return shape.vs[a]:dot(v1) < shape.vs[b]:dot(v1)
 		end)
 
-		vars.vtxsUsed = vtxsUsed
-
-		player.pieces = table(vtxsUsed)
+		player.pieces = vtxsSorted
 			:sub(1, vars.numPieces)
 			:mapi(function(vi, i)
 				return {
@@ -521,6 +558,7 @@ assert(vertexIndex)
 
 	playerTurn = 1
 	onClick = function(x, y, playerIndex, pieceIndex, vertexIndex)
+print('onClick', x, y, playerIndex, pieceIndex, vertexIndex)
 		local currentPlayer = assert.index(players, playerTurn)
 		if not selectedIndex  then
 			if playerTurn ~= playerIndex then return end
@@ -529,23 +567,40 @@ assert(vertexIndex)
 		elseif selectedIndex == pieceIndex then
 			selectedIndex = nil
 		else
-			if playerIndex == -1
-			and pieceIndex == -1
-			-- and make sure it's one edge distance from selectedIndex
-			then
-				-- exchange places
+			local selectedPiece = assert.index(currentPlayer.pieces, selectedIndex)
 
-				local selectedPiece = assert.index(currentPlayer.pieces, selectedIndex)
+			local subdiv = shape.subdivs[vars.subdivIndex]
+			if subdiv.vtxAdj[vertexIndex][selectedPiece.vertexIndex] then -- and make sure it's one edge distance from selectedIndex
+				if playerIndex == -1
+				and pieceIndex == -1
+				then
+					-- exchange places
 
-				vtxPieces[selectedPiece.vertexIndex] = nil
-				selectedPiece.vertexIndex = vertexIndex
-				vtxPieces[vertexIndex] = selectedPiece
+					vtxPieces[selectedPiece.vertexIndex] = nil
+					selectedPiece.vertexIndex = vertexIndex
+					vtxPieces[vertexIndex] = selectedPiece
 
-				selectedIndex = nil
-			else
-				-- if it's another piece ...
-				-- make sure it's one distance away ...
-				-- then hop over it.
+					selectedIndex = nil
+				else
+					-- if it's another piece ...
+					-- make sure it's one distance away ...
+					-- then hop over it.
+				
+					local otherPiecePlayer = assert.index(players, playerIndex)
+					local otherPiece = assert.index(otherPiecePlayer.pieces, pieceIndex)
+					
+					-- now find the next step past this piece
+					print('clicked other piece')
+
+					local nbhdVtxIndexes = table()
+					for nbhdVtxIndex in pairs(subdiv.vtxAdj[vertexIndex]) do
+						if vtxsUsed[nbhdVtxIndex] then
+							nbhdVtxIndexes:insert(nbhdVtxIndex)
+						end
+					end
+			
+					print('nbhd', nbhdVtxIndexes:concat', ')
+				end
 			end
 		end
 	end
@@ -763,11 +818,14 @@ function App:refreshFBO()
 end
 
 
-
 App.viewDist = 2
+
+local clickShapeID = vec4i()
+
 local clearShapeID = vec4i(-1,-1,-1,-1) 
 local clearColor = vec4f(1,1,1,1)
 local shapeID = vec4i(-1,-1,-1,-1) 
+
 function App:update(...)
 	self.fbo:bind()
 	assert(self.fbo:check())
@@ -792,7 +850,7 @@ function App:update(...)
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
 	end
 
-	for _,vi in ipairs(vars.vtxsUsed) do
+	for vi in pairs(vtxsUsed) do
 		local piece = vtxPieces[vi]
 		local playerIndex = -1
 		local pieceIndex = -1
@@ -823,6 +881,14 @@ function App:update(...)
 		}
 	end
 
+
+	local mx = self.mouse.ipos.x
+	local my = self.height - 1 - self.mouse.ipos.y
+	gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT1)
+	gl.glReadPixels(mx, my, 1, 1, self.clickIDFBOTex.format, self.clickIDFBOTex.type, clickShapeID.s)
+	gl.glReadBuffer(gl.GL_BACK)
+
+
 	self.fbo:unbind()
 
 	gl.glDisable(gl.GL_DEPTH_TEST)
@@ -849,7 +915,6 @@ function App:updateGUI()
 	end
 end
 
-local clickShapeID = vec4i()
 function App:event(e)
 	App.super.event(self, e)
 
@@ -858,25 +923,8 @@ function App:event(e)
 	local canHandleKeyboard = not ig.igGetIO()[0].WantCaptureKeyboard
 
 	if canHandleMouse then
-		if e[0].type == sdl.SDL_EVENT_MOUSE_MOTION then
-	
-			--local readBuffer = GLGlobal:get'GL_READ_BUFFER'	-- GL_BACK ... is that always the default?
-			self.fbo:bind()
-			assert(self.fbo:check())
-			gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT1)
-
-			local mx = e[0].motion.x
-			local my = self.height - 1 - e[0].motion.y
-			gl.glReadPixels(mx, my, 1, 1, self.clickIDFBOTex.format, self.clickIDFBOTex.type, clickShapeID.s)
-
-			self.fbo:unbind()
-			--gl.glReadBuffer(readBuffer)
-			gl.glReadBuffer(gl.GL_BACK)
-
---			print('mouse over', table{clickShapeID:unpack()}:mapi(function(x) return ('%08x'):format(x) end):concat',')
-		elseif e[0].type == sdl.SDL_EVENT_MOUSE_BUTTON_DOWN then
+		if e[0].type == sdl.SDL_EVENT_MOUSE_BUTTON_DOWN then
 			if e[0].button.button == 1 then
-				print('clicked on ', clickShapeID)
 				if onClick then
 					onClick(
 						tonumber(e[0].button.x)/self.width,
