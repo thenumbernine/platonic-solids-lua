@@ -156,6 +156,32 @@ local shapes = {
 	},
 }
 
+local function maxPerp(n)
+	assert.len(n, 3)
+	n = n:normalize()
+	local x = n:cross{1,0,0}
+	local y = n:cross{0,1,0}
+	local z = n:cross{0,0,1}
+	local xSq = x:normSq()
+	local ySq = y:normSq()
+	local zSq = z:normSq()
+	if xSq > ySq then
+		if xSq > zSq then
+			return x:normalize()
+		end
+	else
+		if ySq > zSq then
+			return y:normalize()
+		end
+	end
+	return z:normalize()
+end
+
+local function vecToBasis(n)
+	local x = maxPerp(n)
+	return x, n:cross(x)
+end
+
 local epsilon = 1e-3
 for _,shape in ipairs(shapes) do
 	for i=1,#shape.vs do
@@ -478,6 +504,7 @@ local vars = {
 
 local playerTurn
 local selectedIndex
+local haveJumped
 local players
 local vtxPieces 
 
@@ -490,13 +517,11 @@ local colors = table{
 	vec4f(0,1,1,1),
 }
 
-local function initGame()
+function App:initGame()
 	local shape = assert.index(shapes, vars.shapeIndex)
 	local subdiv = shape.subdivs[vars.subdivIndex]
 
 	vtxPieces = {}	-- map from vertex index to piece
-
-	selectedIndex = nil
 
 	players = table()
 	for playerIndex=1,vars.numPlayers do
@@ -538,31 +563,60 @@ assert(vertexIndex)
 			vtxPieces[piece.vertexIndex] = piece
 		end
 	end
+	
+	local function startTurn()
+		selectedIndex = nil
+		haveJumped = nil
+	
+		--[[ TODO slowly interpolate to ...
+		local ez = shape.vs[players[playerTurn].vertexIndex]
+		local ex, ey = vecToBasis(ez)
+		self.view.angle:fromMatrix{ex, ey, ez}
+		--]]
+	end
 
+	local function takeNextTurn()
+		playerTurn = (playerTurn % vars.numPlayers) + 1
+		startTurn()
+	end
+	
 	playerTurn = 1
+	selectedIndex = nil
+	haveJumped = nil
+	startTurn()
+
 	onClick = function(x, y, playerIndex, pieceIndex, vertexIndex)
-print('onClick', x, y, playerIndex, pieceIndex, vertexIndex)
+print('onClick x='..x
+	..' y='..y
+	..' playerIndex='..playerIndex
+	..' pieceIndex='..pieceIndex
+	..' vertexIndex='..vertexIndex
+)
 		local currentPlayer = assert.index(players, playerTurn)
 		if not selectedIndex  then
 			if playerTurn ~= playerIndex then return end
-
 			selectedIndex = pieceIndex
 		elseif selectedIndex == pieceIndex then
-			selectedIndex = nil
+			selectedIndex = nil	-- deselect
+			if haveJumped then
+				takeNextTurn()
+			end
 		else
 			local selectedPiece = assert.index(currentPlayer.pieces, selectedIndex)
 
-			if subdiv.edges[vertexIndex][selectedPiece.vertexIndex] then -- and make sure it's one edge distance from selectedIndex
+			if subdiv.edges[vertexIndex]
+			and subdiv.edges[vertexIndex][selectedPiece.vertexIndex] 
+			then -- and make sure it's one edge distance from selectedIndex
 				if playerIndex == -1
 				and pieceIndex == -1
 				then
-					-- exchange places
-
-					vtxPieces[selectedPiece.vertexIndex] = nil
-					selectedPiece.vertexIndex = vertexIndex
-					vtxPieces[vertexIndex] = selectedPiece
-
-					selectedIndex = nil
+					if not haveJumped then
+						-- exchange places
+						vtxPieces[selectedPiece.vertexIndex] = nil
+						selectedPiece.vertexIndex = vertexIndex
+						vtxPieces[vertexIndex] = selectedPiece
+						takeNextTurn()
+					end
 				else
 					-- if it's another piece ...
 					-- make sure it's one distance away ...
@@ -574,14 +628,47 @@ print('onClick', x, y, playerIndex, pieceIndex, vertexIndex)
 					-- now find the next step past this piece
 					print('clicked other piece')
 
+					-- TODO cache these in order per vertex
 					local nbhdVtxIndexes = table()
 					for nbhdVtxIndex in pairs(subdiv.edges[vertexIndex]) do
 						if subdiv.vtxsUsedSet[nbhdVtxIndex] then
 							nbhdVtxIndexes:insert(nbhdVtxIndex)
 						end
 					end
-			
+				
+					-- now find basis for vertex
+					-- sort by angle
+					-- and find the one opposite this
+					local ex, ey = vecToBasis(shape.vs[vertexIndex])
+					
+					nbhdVtxIndexes:sort(function(a,b)
+						return math.atan2(
+							shape.vs[a] * ey,
+							shape.vs[a] * ex
+						) < math.atan2(
+							shape.vs[b] * ey,
+							shape.vs[b] * ex
+						)
+					end)
+					
+					print('source vertexIndex', selectedPiece.vertexIndex)
+					print('clicked vertexIndex', vertexIndex)
 					print('nbhd', nbhdVtxIndexes:concat', ')
+				
+					local i = nbhdVtxIndexes:find(selectedPiece.vertexIndex)
+					assert(i, "the selected index vertex should be in the neighborhood")
+					
+					i = ((i-1 + math.floor(#nbhdVtxIndexes/2)) % #nbhdVtxIndexes) + 1
+				
+					local jumpToVtxIndex = nbhdVtxIndexes[i]
+					
+					if not vtxPieces[jumpToVtxIndex] then
+						-- exchange places
+						vtxPieces[selectedPiece.vertexIndex] = nil
+						selectedPiece.vertexIndex = jumpToVtxIndex
+						vtxPieces[jumpToVtxIndex] = selectedPiece
+						haveJumped = true
+					end
 				end
 			end
 		end
@@ -751,7 +838,7 @@ void main() {
 	gl.glEnable(gl.GL_DEPTH_TEST)
 	gl.glLineWidth(2)
 
-	initGame(2)
+	self:initGame()
 end
 
 function App:resize(...)
@@ -832,21 +919,23 @@ function App:update(...)
 
 	for _,vi in ipairs(subdiv.vtxsUsedIndexes) do
 		local piece = vtxPieces[vi]
-		local playerIndex = -1
+		local piecePlayerIndex = -1
 		local pieceIndex = -1
 		local color
 		if piece then
-			playerIndex = piece.playerIndex
+			piecePlayerIndex = piece.playerIndex
 			pieceIndex = piece.index
-			if selectedIndex == pieceIndex then
+			if selectedIndex == pieceIndex 
+			and piecePlayerIndex == playerTurn
+			then
 				color = selectedPieceColor.s
 			else
-				color = players[playerIndex].color.s
+				color = players[piecePlayerIndex].color.s
 			end
 		else
 			color = {0,0,0,0}
 		end
-		shapeID:set(playerIndex, pieceIndex, vi, 0)
+		shapeID:set(piecePlayerIndex, pieceIndex, vi, 0)
 
 		self.modelMat
 			:setIdent()
@@ -885,7 +974,7 @@ function App:updateGUI()
 				if ig.igButton(shape.name) then
 					vars.subdivIndex = vars.nextSubdivIndex
 					vars.shapeIndex = shapeIndex
-					initGame()
+					self:initGame()
 				end
 			end
 
