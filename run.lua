@@ -3,6 +3,7 @@ local cmdline = require 'ext.cmdline'(...)
 local table = require 'ext.table'
 local range = require 'ext.range'
 local assert = require 'ext.assert'
+local class = require 'ext.class'
 local math = require 'ext.math'
 local op = require 'ext.op'
 local vec4i = require 'vec-ffi.vec4i'	-- or ui?
@@ -163,6 +164,12 @@ for _,shape in ipairs(shapes) do
 	for i=1,#shape.xformBasis do
 		shape.xformBasis[i] = matrix(shape.xformBasis[i])
 	end
+end
+
+local Subdiv = class()
+function Subdiv:init()
+	self.edges = table()
+	self.faces = table()
 end
 
 for _,shape in ipairs(shapes) do
@@ -340,27 +347,26 @@ for _,shape in ipairs(shapes) do
 	end
 
 	local function setFaceAdj(subdiv, i,j,k)
-		subdiv.vtxAdj = subdiv.vtxAdj or {}
-		subdiv.vtxAdj[i] = subdiv.vtxAdj[i] or {}
-		subdiv.vtxAdj[j] = subdiv.vtxAdj[j] or {}
-		subdiv.vtxAdj[k] = subdiv.vtxAdj[k] or {}
-		subdiv.vtxAdj[i][j] = true
-		subdiv.vtxAdj[j][i] = true
-		subdiv.vtxAdj[i][k] = true
-		subdiv.vtxAdj[k][i] = true
-		subdiv.vtxAdj[j][k] = true
-		subdiv.vtxAdj[k][j] = true
+		subdiv.edges[i] = subdiv.edges[i] or {}
+		subdiv.edges[j] = subdiv.edges[j] or {}
+		subdiv.edges[k] = subdiv.edges[k] or {}
+		subdiv.edges[i][j] = true
+		subdiv.edges[j][i] = true
+		subdiv.edges[i][k] = true
+		subdiv.edges[k][i] = true
+		subdiv.edges[j][k] = true
+		subdiv.edges[k][j] = true
 	end
 
 	if n == 3 then
-		local subdiv = table()
+		local subdiv = Subdiv()
 		for i,face in ipairs(shape.faces) do
 			setFaceAdj(subdiv, table.unpack(face))
-			subdiv[i] = table(face)
+			subdiv.faces[i] = table(face)
 		end
 		shape.subdivs[1] = subdiv
 	else
-		local subdiv = table()
+		local subdiv = Subdiv()
 		for _,face in ipairs(shape.faces) do
 			local vtxs = face:mapi(function(i) return shape.vs[i] end)
 			local centerVtx = vtxs:sum() / #vtxs
@@ -368,7 +374,7 @@ for _,shape in ipairs(shapes) do
 			for i=1,#face do
 				local i1 = face[i]
 				local i2 = face[(i % #face) + 1]
-				subdiv:insert{centerIndex, i1, i2}
+				subdiv.faces:insert{centerIndex, i1, i2}
 				setFaceAdj(subdiv, centerIndex, i1, i2)
 			end
 		end
@@ -382,9 +388,9 @@ for _,shape in ipairs(shapes) do
 	-- how do you do opposing vertexes on a face?
 	for subdivIndex=2,10 do
 print('subdivIndex', subdivIndex)
-		local subdiv = table()
+		local subdiv = Subdiv()
 --[[ divide the previous iterations
-		for _,face in ipairs(shape.subdivs[subdivIndex-1]) do
+		for _,face in ipairs(shape.subdivs[subdivIndex-1].faces) do
 			assert.len(face, 3)
 			local edgeCenterIndexes = table()
 			for i=1,#face do
@@ -397,19 +403,19 @@ print('subdivIndex', subdivIndex)
 			assert.len(edgeCenterIndexes, 3)
 			local f1, f2, f3 = table.unpack(face)
 			local e1, e2, e3 = edgeCenterIndexes:unpack()
-			subdiv:insert{e3, f1, e1}
+			subdiv.faces:insert{e3, f1, e1}
 			setFaceAdj(subdiv, e3, f1, e1)
-			subdiv:insert{e1, f2, e2}
+			subdiv.faces:insert{e1, f2, e2}
 			setFaceAdj(subdiv, e1, f2, e2)
-			subdiv:insert{e2, f3, e3}
+			subdiv.faces:insert{e2, f3, e3}
 			setFaceAdj(subdiv, e2, f3, e3)
-			subdiv:insert{e1, e2, e3}
+			subdiv.faces:insert{e1, e2, e3}
 			setFaceAdj(subdiv, e1, e2, e3)
 		end
 --]]
 -- [[ redivide the original edge
 		-- TODO barycentric subdivision
-		for _,face in ipairs(shape.subdivs[1]) do
+		for _,face in ipairs(shape.subdivs[1].faces) do
 			local f1, f2, f3 = table.unpack(face)
 			local v1 = shape.vs[f1]
 			local v2 = shape.vs[f2]
@@ -434,7 +440,7 @@ print('subdivIndex', subdivIndex)
 					and patchIndexes[i+1][j]
 					and patchIndexes[i][j+1]
 					then
-						subdiv:insert{
+						subdiv.faces:insert{
 							patchIndexes[i][j],
 							patchIndexes[i+1][j],
 							patchIndexes[i][j+1],
@@ -450,7 +456,7 @@ print('subdivIndex', subdivIndex)
 					and patchIndexes[i+1][j]
 					and patchIndexes[i+1][j+1]
 					then
-						subdiv:insert{
+						subdiv.faces:insert{
 							patchIndexes[i][j+1],
 							patchIndexes[i+1][j],
 							patchIndexes[i+1][j+1],
@@ -503,7 +509,7 @@ local colors = table{
 local function initGame()
 	local shape = assert.index(shapes, vars.shapeIndex)
 
-	local faces = shape.subdivs[vars.subdivIndex]
+	local faces = shape.subdivs[vars.subdivIndex].faces
 	vtxsUsed = {}
 	for _,face in ipairs(faces) do
 		for _,vi in ipairs(face) do
@@ -570,7 +576,7 @@ print('onClick', x, y, playerIndex, pieceIndex, vertexIndex)
 			local selectedPiece = assert.index(currentPlayer.pieces, selectedIndex)
 
 			local subdiv = shape.subdivs[vars.subdivIndex]
-			if subdiv.vtxAdj[vertexIndex][selectedPiece.vertexIndex] then -- and make sure it's one edge distance from selectedIndex
+			if subdiv.edges[vertexIndex][selectedPiece.vertexIndex] then -- and make sure it's one edge distance from selectedIndex
 				if playerIndex == -1
 				and pieceIndex == -1
 				then
@@ -593,7 +599,7 @@ print('onClick', x, y, playerIndex, pieceIndex, vertexIndex)
 					print('clicked other piece')
 
 					local nbhdVtxIndexes = table()
-					for nbhdVtxIndex in pairs(subdiv.vtxAdj[vertexIndex]) do
+					for nbhdVtxIndex in pairs(subdiv.edges[vertexIndex]) do
 						if vtxsUsed[nbhdVtxIndex] then
 							nbhdVtxIndexes:insert(nbhdVtxIndex)
 						end
@@ -720,7 +726,7 @@ void main() {
 
 		shape.subdivObjs = table()
 		for subdivIndex=0,#shape.subdivs do
-			local faceGeoms = (shape.subdivs[subdivIndex] or shape.faces):mapi(function(face)
+			local faceGeoms = (shape.subdivs[subdivIndex] or shape).faces:mapi(function(face)
 				return {
 					--mode = gl.GL_POLYGON,		-- not in GLES3
 					mode = gl.GL_TRIANGLE_FAN,	-- GLES3
