@@ -332,8 +332,9 @@ for _,shape in ipairs(shapes) do
 	-- but really
 	-- dodecahedron has 5-sided objects
 	-- how do you do opposing vertexes on a face?
-	for subdivIndex=2,5 do
+	for subdivIndex=2,10 do
 		local subdiv = table()
+--[[ divide the previous iterations
 		for _,face in ipairs(shape.subdivs[subdivIndex-1]) do
 			assert.len(face, 3)
 			local edgeCenterIndexes = table()
@@ -353,14 +354,75 @@ for _,shape in ipairs(shapes) do
 			subdiv:insert{e2, f3, e3}
 			subdiv:insert{e1, e2, e3}
 		end
+--]]
+-- [[ redivide the original edge
+		-- TODO barycentric subdivision
+		for _,face in ipairs(shape.subdivs[1]) do
+			local f1, f2, f3 = table.unpack(face)
+			local v1 = shape.vs[f1]
+			local v2 = shape.vs[f2]
+			local v3 = shape.vs[f3]
+			local edgeDivs = subdivIndex
+			local patchVs = table()
+			local patchIndexes = table()
+			local da = v2 - v1
+			local db = v3 - v1
+			for i=0,edgeDivs  do
+				local fi = i / edgeDivs
+				patchIndexes[i] = patchIndexes[i] or {}
+				for j=0,edgeDivs-i do
+					local fj = j / edgeDivs
+					local v = v1 + da * fi + db * fj
+					-- [[
+					if i == 0 and j == 0 then
+						patchIndexes[i][j] = f1
+					elseif i == edgeDivs and j == 0 then
+						patchIndexes[i][j] = f2
+					elseif i == edgeDivs and j == edgeDivs then
+						patchIndexes[i][j] = f2
+					else
+					--]] do
+						local vi = #shape.vs + 1
+						shape.vs[vi] = v
+						patchIndexes[i][j] = vi
+					end
+				end
+			end
+			for i=0,edgeDivs-1 do
+				for j=0,edgeDivs-i-1 do
+					if patchIndexes[i][j]
+					and patchIndexes[i+1][j]
+					and patchIndexes[i][j+1]
+					then
+						subdiv:insert{
+							patchIndexes[i][j],
+							patchIndexes[i+1][j],
+							patchIndexes[i][j+1],
+						}
+					end
+					if patchIndexes[i][j+1]
+					and patchIndexes[i+1][j]
+					and patchIndexes[i+1][j+1]
+					then
+						subdiv:insert{
+							patchIndexes[i][j+1],
+							patchIndexes[i+1][j],
+							patchIndexes[i+1][j+1],
+						}
+					end
+				end
+			end
+		end
+--]]
 		shape.subdivs:insert(subdiv)
 		assert.len(shape.subdivs, subdivIndex)
 	end
 
-	-- normalize new vtxs
+	--[[ normalize new vtxs
 	for i=1,#shape.vs do
 		shape.vs[i] = shape.vs[i]:normalize()
 	end
+	--]]
 end
 
 local vars = {
@@ -470,6 +532,7 @@ void main() {
 		gl.glEnable(gl.GL_PROGRAM_POINT_SIZE)
 	end
 	gl.glEnable(gl.GL_DEPTH_TEST)
+	gl.glLineWidth(2)
 end
 
 App.viewDist = 2
