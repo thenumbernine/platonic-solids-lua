@@ -507,6 +507,7 @@ local selectedIndex
 local haveJumped
 local players
 local vtxPieces 
+local playerStartForVtxIndex
 
 local colors = table{
 	vec4f(1,0,0,1),
@@ -522,6 +523,7 @@ function App:initGame()
 	local subdiv = shape.subdivs[vars.subdivIndex]
 
 	vtxPieces = {}	-- map from vertex index to piece
+	playerStartForVtxIndex = {}	-- map from vertex index to player index of starting locations
 
 	players = table()
 	for playerIndex=1,vars.numPlayers do
@@ -542,15 +544,19 @@ assert(vertexIndex)
 			color = assert.index(colors, playerIndex),
 		}
 		players:insert(player)
-
+		
 		local v1 = shape.vs[vertexIndex]
 		local vtxsSorted = table(subdiv.vtxsUsedIndexes)
 		vtxsSorted:sort(function(a,b)
 			return shape.vs[a]:dot(v1) < shape.vs[b]:dot(v1)
 		end)
+		vtxsSorted = vtxsSorted:sub(1, vars.numPieces)
+	
+		for _,vi in ipairs(vtxsSorted) do
+			playerStartForVtxIndex[vi] = playerIndex
+		end
 
-		player.pieces = vtxsSorted
-			:sub(1, vars.numPieces)
+		player.pieces = vtxsSorted 
 			:mapi(function(vi, i)
 				return {
 					index = i,
@@ -915,6 +921,8 @@ function App:update(...)
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
 		subdiv.lineObj:draw()
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+		-- TODO TODO 				
+		-- also draw the dual's vertexIndex so we can click the shape surface	
 	end
 
 	for _,vi in ipairs(subdiv.vtxsUsedIndexes) do
@@ -933,7 +941,15 @@ function App:update(...)
 				color = players[piecePlayerIndex].color.s
 			end
 		else
-			color = {0,0,0,0}
+			local startPlayerIndex = playerStartForVtxIndex[vi]
+			if startPlayerIndex then
+				color = {.5, .5, .5, 0}
+			else
+				-- in this case, don't draw any color, instead skip the color write
+				-- until I figure out how to skip color write. ..
+				-- .... set it black
+				color = {0,0,0,0}
+			end
 		end
 		shapeID:set(piecePlayerIndex, pieceIndex, vi, 0)
 
@@ -942,12 +958,22 @@ function App:update(...)
 			:setTranslate(shape.vs[vi]:unpack())
 			:applyScale(.1, .1, .1)
 
+		-- TODO this doesn't work
+		-- how to make it just write the shapeID but not the color?
+		if not color then
+			self.fbo:drawBuffers(gl.GL_COLOR_ATTACHMENT1)
+		end
+
 		shapes[5].faceObj:draw{
 			uniforms = {
 				color = color,
 				shapeID = shapeID.s,
 			},
 		}
+		
+		if not color then
+			self.fbo:drawBuffers(gl.GL_COLOR_ATTACHMENT0, gl.GL_COLOR_ATTACHMENT1)
+		end
 	end
 
 
