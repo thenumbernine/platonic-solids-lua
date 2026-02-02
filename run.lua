@@ -346,22 +346,9 @@ for _,shape in ipairs(shapes) do
 		return i
 	end
 
-	local function setFaceAdj(subdiv, i,j,k)
-		subdiv.edges[i] = subdiv.edges[i] or {}
-		subdiv.edges[j] = subdiv.edges[j] or {}
-		subdiv.edges[k] = subdiv.edges[k] or {}
-		subdiv.edges[i][j] = true
-		subdiv.edges[j][i] = true
-		subdiv.edges[i][k] = true
-		subdiv.edges[k][i] = true
-		subdiv.edges[j][k] = true
-		subdiv.edges[k][j] = true
-	end
-
 	if n == 3 then
 		local subdiv = Subdiv()
 		for i,face in ipairs(shape.faces) do
-			setFaceAdj(subdiv, table.unpack(face))
 			subdiv.faces[i] = table(face)
 		end
 		shape.subdivs[1] = subdiv
@@ -375,7 +362,6 @@ for _,shape in ipairs(shapes) do
 				local i1 = face[i]
 				local i2 = face[(i % #face) + 1]
 				subdiv.faces:insert{centerIndex, i1, i2}
-				setFaceAdj(subdiv, centerIndex, i1, i2)
 			end
 		end
 		shape.subdivs:insert(subdiv)
@@ -404,13 +390,9 @@ print('subdivIndex', subdivIndex)
 			local f1, f2, f3 = table.unpack(face)
 			local e1, e2, e3 = edgeCenterIndexes:unpack()
 			subdiv.faces:insert{e3, f1, e1}
-			setFaceAdj(subdiv, e3, f1, e1)
 			subdiv.faces:insert{e1, f2, e2}
-			setFaceAdj(subdiv, e1, f2, e2)
 			subdiv.faces:insert{e2, f3, e3}
-			setFaceAdj(subdiv, e2, f3, e3)
 			subdiv.faces:insert{e1, e2, e3}
-			setFaceAdj(subdiv, e1, e2, e3)
 		end
 --]]
 -- [[ redivide the original edge
@@ -445,12 +427,6 @@ print('subdivIndex', subdivIndex)
 							patchIndexes[i+1][j],
 							patchIndexes[i][j+1],
 						}
-						setFaceAdj(
-							subdiv, 
-							patchIndexes[i][j],
-							patchIndexes[i+1][j],
-							patchIndexes[i][j+1]
-						)
 					end
 					if patchIndexes[i][j+1]
 					and patchIndexes[i+1][j]
@@ -461,12 +437,6 @@ print('subdivIndex', subdivIndex)
 							patchIndexes[i+1][j],
 							patchIndexes[i+1][j+1],
 						}
-						setFaceAdj(
-							subdiv, 
-							patchIndexes[i][j+1],
-							patchIndexes[i+1][j],
-							patchIndexes[i+1][j+1]
-						)
 					end
 				end
 			end
@@ -474,6 +444,21 @@ print('subdivIndex', subdivIndex)
 --]]
 		shape.subdivs:insert(subdiv)
 		assert.len(shape.subdivs, subdivIndex)
+	
+
+		subdiv.vtxsUsedIndexes = table()
+		subdiv.vtxsUsedSet = table()
+		for _,face in ipairs(subdiv.faces) do
+			for i,vi in ipairs(face) do
+				subdiv.vtxsUsedSet[vi] = true
+				local vi2 = face[(i % #face) + 1]
+				subdiv.edges[vi] = subdiv.edges[vi] or {}
+				subdiv.edges[vi][vi2] = true
+				subdiv.edges[vi2] = subdiv.edges[vi2] or {}
+				subdiv.edges[vi2][vi] = true
+			end
+		end
+		subdiv.vtxsUsedIndexes = subdiv.vtxsUsedSet:keys():sort()
 	end
 
 	-- [[ normalize new vtxs
@@ -494,7 +479,6 @@ local vars = {
 local playerTurn
 local selectedIndex
 local players
-local vtxsUsed
 local vtxPieces 
 
 local colors = table{
@@ -508,14 +492,7 @@ local colors = table{
 
 local function initGame()
 	local shape = assert.index(shapes, vars.shapeIndex)
-
-	local faces = shape.subdivs[vars.subdivIndex].faces
-	vtxsUsed = {}
-	for _,face in ipairs(faces) do
-		for _,vi in ipairs(face) do
-			vtxsUsed[vi] = true
-		end
-	end
+	local subdiv = shape.subdivs[vars.subdivIndex]
 
 	vtxPieces = {}	-- map from vertex index to piece
 
@@ -542,7 +519,7 @@ assert(vertexIndex)
 		players:insert(player)
 
 		local v1 = shape.vs[vertexIndex]
-		local vtxsSorted = table.keys(vtxsUsed)
+		local vtxsSorted = table(subdiv.vtxsUsedIndexes)
 		vtxsSorted:sort(function(a,b)
 			return shape.vs[a]:dot(v1) < shape.vs[b]:dot(v1)
 		end)
@@ -575,7 +552,6 @@ print('onClick', x, y, playerIndex, pieceIndex, vertexIndex)
 		else
 			local selectedPiece = assert.index(currentPlayer.pieces, selectedIndex)
 
-			local subdiv = shape.subdivs[vars.subdivIndex]
 			if subdiv.edges[vertexIndex][selectedPiece.vertexIndex] then -- and make sure it's one edge distance from selectedIndex
 				if playerIndex == -1
 				and pieceIndex == -1
@@ -600,7 +576,7 @@ print('onClick', x, y, playerIndex, pieceIndex, vertexIndex)
 
 					local nbhdVtxIndexes = table()
 					for nbhdVtxIndex in pairs(subdiv.edges[vertexIndex]) do
-						if vtxsUsed[nbhdVtxIndex] then
+						if subdiv.vtxsUsedSet[nbhdVtxIndex] then
 							nbhdVtxIndexes:insert(nbhdVtxIndex)
 						end
 					end
@@ -724,9 +700,9 @@ void main() {
 			usage = gl.GL_STATIC_DRAW,
 		}:unbind()
 
-		shape.subdivObjs = table()
 		for subdivIndex=0,#shape.subdivs do
-			local faceGeoms = (shape.subdivs[subdivIndex] or shape).faces:mapi(function(face)
+			local subdiv = shape.subdivs[subdivIndex] or shape
+			local faceGeoms = subdiv.faces:mapi(function(face)
 				return {
 					--mode = gl.GL_POLYGON,		-- not in GLES3
 					mode = gl.GL_TRIANGLE_FAN,	-- GLES3
@@ -736,30 +712,28 @@ void main() {
 				}
 			end)
 
-			shape.subdivObjs[subdivIndex] = {
-				lineObj = GLSceneObject{
-					program = lineProgram,
-					vertexes = vtxGPU,
-					geometries = faceGeoms,
-					uniforms = {
-						modelMat = self.modelMat.ptr,
-						viewMat = self.view.mvMat.ptr,
-						projMat = self.view.projMat.ptr,
-						color = {1,1,1,1},
-						shapeID = {-1,-1,-1,-1},
-					},
+			subdiv.lineObj = GLSceneObject{
+				program = lineProgram,
+				vertexes = vtxGPU,
+				geometries = faceGeoms,
+				uniforms = {
+					modelMat = self.modelMat.ptr,
+					viewMat = self.view.mvMat.ptr,
+					projMat = self.view.projMat.ptr,
+					color = {1,1,1,1},
+					shapeID = {-1,-1,-1,-1},
 				},
-				faceObj = GLSceneObject{
-					program = faceProgram,
-					vertexes = vtxGPU,
-					geometries = faceGeoms,
-					uniforms = {
-						modelMat = self.modelMat.ptr,
-						viewMat = self.view.mvMat.ptr,
-						projMat = self.view.projMat.ptr,
-						color = {1,1,1,1},
-						shapeID = {-1,-1,-1,-1},
-					},
+			}
+			subdiv.faceObj = GLSceneObject{
+				program = faceProgram,
+				vertexes = vtxGPU,
+				geometries = faceGeoms,
+				uniforms = {
+					modelMat = self.modelMat.ptr,
+					viewMat = self.view.mvMat.ptr,
+					projMat = self.view.projMat.ptr,
+					color = {1,1,1,1},
+					shapeID = {-1,-1,-1,-1},
 				},
 			}
 		end
@@ -848,15 +822,15 @@ function App:update(...)
 	self.modelMat:setIdent()
 
 	local shape = shapes[vars.shapeIndex]
-	local shapeObj = shape.subdivObjs[vars.subdivIndex]
-	if shapeObj then
-		shapeObj.faceObj:draw()
+	local subdiv = shape.subdivs[vars.subdivIndex] or shape
+	if subdiv then
+		subdiv.faceObj:draw()
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
-		shapeObj.lineObj:draw()
+		subdiv.lineObj:draw()
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
 	end
 
-	for vi in pairs(vtxsUsed) do
+	for _,vi in ipairs(subdiv.vtxsUsedIndexes) do
 		local piece = vtxPieces[vi]
 		local playerIndex = -1
 		local pieceIndex = -1
@@ -879,7 +853,7 @@ function App:update(...)
 			:setTranslate(shape.vs[vi]:unpack())
 			:applyScale(.1, .1, .1)
 
-		shapes[5].subdivObjs[0].faceObj:draw{
+		shapes[5].faceObj:draw{
 			uniforms = {
 				color = color,
 				shapeID = shapeID.s,
