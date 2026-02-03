@@ -6,9 +6,12 @@ local assert = require 'ext.assert'
 local class = require 'ext.class'
 local math = require 'ext.math'
 local op = require 'ext.op'
+local vector = require 'ffi.cpp.vector'
+local vec3f = require 'vec-ffi.vec3f'
 local vec4i = require 'vec-ffi.vec4i'
 local vec4f = require 'vec-ffi.vec4f'
 local quatf = require 'vec-ffi.quatf'
+local vec3x3f = require 'vec-ffi.vec3x3f'
 local vec4x4f = require 'vec-ffi.vec4x4f'
 local gl = require 'gl.setup'(cmdline.gl)
 local GLTex2D = require 'gl.tex2d'
@@ -18,7 +21,7 @@ local GLArrayBuffer = require 'gl.arraybuffer'
 local GLSceneObject = require 'gl.sceneobject'
 local sdl = require 'sdl'
 local ig = require 'imgui'
-local matrix = require 'matrix'
+
 
 local App = require 'imgui.appwithorbit'():subclass()
 
@@ -28,18 +31,22 @@ local sqrt5 = math.sqrt(5)
 local _1_sqrt3 = 1 / sqrt3
 
 
+local vector_vec3f = vector'vec3f_t'
+local vector_quatf = vector'quatf_t'
+local vector_vec3x3f = vector'vec3x3f_t'
+
 
 -- platonic solids
 local shapes = {
 	{
 		name = 'tetrahedron',
-		vs = matrix{
+		vs = vector_vec3f{
 			{0, 0, 1},
 			{0, (2 * sqrt2) / 3, -1 / 3},
 			{sqrt2 / sqrt3, -sqrt2 / 3, -1 / 3},
 			{-sqrt2 / sqrt3, -sqrt2 / 3, -1 / 3},
 		},
-		xformBasis = {
+		xformBasis = vector_vec3x3f{
 			{
 				{-.5, -sqrt3/2, 0},
 				{sqrt3/2, -.5, 0},
@@ -54,7 +61,7 @@ local shapes = {
 	},
 	{
 		name = 'cube',
-		vs = matrix{
+		vs = vector_vec3f{
 			{_1_sqrt3, _1_sqrt3, _1_sqrt3},
 			{-_1_sqrt3, _1_sqrt3, _1_sqrt3},
 			{_1_sqrt3, -_1_sqrt3, _1_sqrt3},
@@ -64,7 +71,7 @@ local shapes = {
 			{_1_sqrt3, -_1_sqrt3, -_1_sqrt3},
 			{-_1_sqrt3, -_1_sqrt3, -_1_sqrt3},
 		},
-		xformBasis = {
+		xformBasis = vector_vec3x3f{
 			{
 				{1, 0, 0},
 				{0, 0, -1},
@@ -79,7 +86,7 @@ local shapes = {
 	},
 	{
 		name = 'octahedron',
-		vs = matrix{
+		vs = vector_vec3f{
 			{1, 0, 0},
 			{0, 0, 1},
 			{0, 1, 0},
@@ -87,36 +94,41 @@ local shapes = {
 			{0, 0, -1},
 			{-1, 0, 0},
 		},
-		xformBasis = {
+		xformBasis = vector_vec3x3f{
 			{{1, 0, 0}, {0, 0, -1}, {0, 1, 0}},
 			{{0, 0, 1}, {0, 1, 0}, {-1, 0, 0}}
 		}
 	},
 	{
 		name = 'dodecahedron',
-		vs = matrix{
-			{(3 + sqrt5) / 2, -1, 0},
-			{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
-			{(3 + sqrt5) / 2, 1, 0},
-			{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
-			{1, 0, (3 + sqrt5) / 2},
-			{(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
-			{0, -(3 + sqrt5) / 2, 1},
-			{0, -(3 + sqrt5) / 2, -1},
-			{(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
-			{1, 0, -(3 + sqrt5) / 2},
-			{-1, 0, (3 + sqrt5) / 2},
-			{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
-			{0, (3 + sqrt5) / 2, 1},
-			{0, (3 + sqrt5) / 2, -1},
-			{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
-			{-1, 0, -(3 + sqrt5) / 2},
-			{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
-			{-(3 + sqrt5) / 2, -1, 0},
-			{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
-			{-(3 + sqrt5) / 2, 1, 0}
-		} / math.sqrt((9 + 3 * sqrt5) / 2),
-		xformBasis = {
+		vs = vector_vec3f(
+			-- does vector have a .map ?
+			table.mapi({
+				{(3 + sqrt5) / 2, -1, 0},
+				{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
+				{(3 + sqrt5) / 2, 1, 0},
+				{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+				{1, 0, (3 + sqrt5) / 2},
+				{(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
+				{0, -(3 + sqrt5) / 2, 1},
+				{0, -(3 + sqrt5) / 2, -1},
+				{(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+				{1, 0, -(3 + sqrt5) / 2},
+				{-1, 0, (3 + sqrt5) / 2},
+				{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
+				{0, (3 + sqrt5) / 2, 1},
+				{0, (3 + sqrt5) / 2, -1},
+				{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+				{-1, 0, -(3 + sqrt5) / 2},
+				{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
+				{-(3 + sqrt5) / 2, -1, 0},
+				{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+				{-(3 + sqrt5) / 2, 1, 0}
+			}, function(v) 
+				return vec3f(v) / math.sqrt((9 + 3 * sqrt5) / 2) 
+			end)
+		),
+		xformBasis = vector_vec3x3f{
 			{	--  T3
 				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
 				{-1/2, -(1-sqrt5)/4, -(1+sqrt5)/4},
@@ -131,21 +143,25 @@ local shapes = {
 	},
 	{
 		name = 'icosahedron',
-		vs = matrix{
-			{0, (-1+sqrt5)/4, 1/2},
-			{1/2, 0, (-1+sqrt5)/4},
-			{-1/2, 0, (-1+sqrt5)/4},
-			{(-1+sqrt5)/4, 1/2, 0},
-			{(1-sqrt5)/4, 1/2, 0},
-			{0, (1-sqrt5)/4, 1/2},
-			{0, (-1+sqrt5)/4, -1/2},
-			{(-1+sqrt5)/4, -1/2, 0},
-			{(1-sqrt5)/4, -1/2, 0},
-			{1/2, 0, (1-sqrt5)/4},
-			{-1/2, 0, (1-sqrt5)/4},
-			{0, (1-sqrt5)/4, -1/2},
-		} / math.sqrt((5 - sqrt5) / 8),
-		xformBasis = {
+		vs = vector_vec3f(
+			table.mapi({
+				{0, (-1+sqrt5)/4, 1/2},
+				{1/2, 0, (-1+sqrt5)/4},
+				{-1/2, 0, (-1+sqrt5)/4},
+				{(-1+sqrt5)/4, 1/2, 0},
+				{(1-sqrt5)/4, 1/2, 0},
+				{0, (1-sqrt5)/4, 1/2},
+				{0, (-1+sqrt5)/4, -1/2},
+				{(-1+sqrt5)/4, -1/2, 0},
+				{(1-sqrt5)/4, -1/2, 0},
+				{1/2, 0, (1-sqrt5)/4},
+				{-1/2, 0, (1-sqrt5)/4},
+				{0, (1-sqrt5)/4, -1/2},
+			}, function(v)
+				return vec3f(v) / math.sqrt((5 - sqrt5) / 8)
+			end)
+		),
+		xformBasis = vector_vec3x3f{
 			{
 				{(-1+sqrt5)/4, -(1+sqrt5)/4, -1/2},
 				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
@@ -163,11 +179,9 @@ local shapes = {
 -- get maximum vector of n cross x y z basis dirs
 -- i.e. max col/row of Levi-Civita w/ n
 local function maxPerp(n)
-	assert.len(n, 3)
-	n = n:normalize()
-	local x = n:cross{1,0,0}
-	local y = n:cross{0,1,0}
-	local z = n:cross{0,0,1}
+	local x = n:cross(vec3f(1,0,0))
+	local y = n:cross(vec3f(0,1,0))
+	local z = n:cross(vec3f(0,0,1))
 	local xSq = x:normSq()
 	local ySq = y:normSq()
 	local zSq = z:normSq()
@@ -186,14 +200,6 @@ local function vecToBasis(n)
 end
 
 local epsilon = 1e-3
-for _,shape in ipairs(shapes) do
-	for i=1,#shape.vs do
-		shape.vs[i] = matrix(shape.vs[i])
-	end
-	for i=1,#shape.xformBasis do
-		shape.xformBasis[i] = matrix(shape.xformBasis[i])
-	end
-end
 
 -- store a subdivision of the mesh
 -- but really this is just a mesh itself
@@ -214,16 +220,11 @@ for _,shape in ipairs(shapes) do
 	local visited = table()
 	do
 		local function translate(v)
-			return matrix{
-				{1,0,0,v[1]},
-				{0,1,0,v[2]},
-				{0,0,1,v[3]},
-				{0,0,0,1}
-			}
+			return vec4x4f():setTranslate(v:unpack())
 		end
 
 		local vInitIndex = 1
-		local vInit = shape.vs[vInitIndex]
+		local vInit = shape.vs.v[vInitIndex-1]
 
 		-- init a 4x4 xform with the translation 'v' and rot 'xform', and use right-muls to traverse the surface
 		-- then whatever vtxs its translation matches up with, use those for the adjacency graph
@@ -238,19 +239,27 @@ for _,shape in ipairs(shapes) do
 			visited:insert(m:clone())
 
 			for _,xform in ipairs(shape.xformBasis) do
-				local xform4x4 = matrix{4,4}:lambda(function(i,j)
-					if i<=3 and j<=3 then return xform[i][j] end
-					return i==j and 1 or 0
-				end)
-				mNew = m * translate(-vInit) * xform4x4 * translate(vInit)
+				local xform4x4 = vec4x4f(
+					vec4f(xform.x:unpack()),
+					vec4f(xform.y:unpack()),
+					vec4f(xform.z:unpack()),
+					vec4f(0,0,0,1)
+				)
+				local mNew = m * translate(-vInit) * xform4x4 * translate(vInit)
 
-				local vNew = matrix{3}:lambda(function(i) return mNew[i][4] end)
+				-- assert storage is row-major
+				local vNew = vec3f(
+					mNew.x.w,
+					mNew.y.w,
+					mNew.z.w
+				)
 				local vIndexNew = table.find(shape.vs, nil, function(v1)
 					return (vNew - v1):normSq() < epsilon
 				end)
 				if not vIndexNew then
 					error('failed to find vertex '..vNew)
 				end
+				vIndexNew = vIndexNew + 1 
 
 				if vIndex ~= vIndexNew then
 					shape.vtxAdj[vIndex][vIndexNew] = true
@@ -284,17 +293,17 @@ for _,shape in ipairs(shapes) do
 				then
 					local offplane
 					if #vtxIndexes >= 3 then
-						local v1 = shape.vs[vtxIndexes[1]]
+						local v1 = shape.vs.v[vtxIndexes[1]-1]
 						if not nextNormal then
-							local v2 = shape.vs[vtxIndexes[2]]
-							local v3 = shape.vs[vtxIndexes[3]]
+							local v2 = shape.vs.v[vtxIndexes[2]-1]
+							local v3 = shape.vs.v[vtxIndexes[3]-1]
 							nextNormal = (v3 - v2):cross(v2 - v1):normalize()
 							flip = nextNormal:dot(v1) < 0		-- flip means flip the order of vtxs when you're done
 							if flip then
 								nextNormal = -nextNormal
 							end
 						end
-						local v = shape.vs[j]
+						local v = shape.vs.v[j-1]
 						if math.abs(((v - v1):normalize()):dot(nextNormal)) > .01 then
 							offplane = true
 						end
@@ -305,8 +314,9 @@ for _,shape in ipairs(shapes) do
 						then
 							-- only if all vtxs are on the same side of this
 							local allOnOneSide = true
-							local v1 = shape.vs[vtxIndexes[1]]
-							for k,vk in ipairs(shape.vs) do
+							local v1 = shape.vs.v[vtxIndexes[1]-1]
+							for k=1,#shape.vs do
+								local vk = shape.vs.v[k-1]
 								local dist = (vk - v1):dot(nextNormal)
 								if dist > epsilon then
 									allOnOneSide = false
@@ -345,7 +355,11 @@ for _,shape in ipairs(shapes) do
 		local x,y = vecToBasis(v:normalize())
 		return quatf():fromMatrix{x,y,v}
 	end
-	shape.qs = table.mapi(shape.vs, vecToQuat)
+	
+	shape.qs = vector_quatf(#shape.vs)
+	for i=0,#shape.vs-1 do
+		shape.qs.v[i] = vecToQuat(shape.vs.v[i])
+	end
 
 
 	shape.vtxBaseCount = #shape.vs
@@ -373,7 +387,8 @@ for _,shape in ipairs(shapes) do
 		return table{x,y,z}:concat','
 	end
 	
-	for i,v in ipairs(shape.vs) do
+	for i=1,#shape.vs do
+		local v = shape.vs.v[i-1]
 		shape.vtxForKey[vtxKey(v)] = i
 	end
 	
@@ -383,9 +398,9 @@ for _,shape in ipairs(shapes) do
 		if not i then
 			i = #shape.vs + 1
 			shape.vtxForKey[key] = i
-			v = matrix(v)
-			shape.vs[i] = v
-			shape.qs[i] = vecToQuat(v)
+			assert.eq(#shape.vs, #shape.qs)
+			shape.vs:emplace_back()[0] = v
+			shape.qs:emplace_back()[0] = vecToQuat(v)
 		end
 		return i
 	end
@@ -399,7 +414,7 @@ for _,shape in ipairs(shapes) do
 	else
 		local subdiv = Subdiv()
 		for _,face in ipairs(shape.faces) do
-			local vtxs = face:mapi(function(i) return shape.vs[i] end)
+			local vtxs = face:mapi(function(i) return shape.vs.v[i-1] end)
 			local centerVtx = vtxs:sum() / #vtxs
 			local centerIndex = findOrCreateVertex(centerVtx)
 			for i=1,#face do
@@ -426,7 +441,7 @@ print('subdivIndex', subdivIndex)
 			for i=1,#face do
 				local i1 = face[i]
 				local i2 = face[(i%#face)+1]
-				local edgeCenterVtx = (shape.vs[i1] + shape.vs[i2]) * .5
+				local edgeCenterVtx = (shape.vs.v[i1-1] + shape.vs.v[i2-1]) * .5
 				local edgeCenterIndex = findOrCreateVertex(edgeCenterVtx)
 				edgeCenterIndexes:insert(edgeCenterIndex)
 			end
@@ -443,9 +458,9 @@ print('subdivIndex', subdivIndex)
 		-- TODO barycentric subdivision
 		for _,face in ipairs(shape.subdivs[1].faces) do
 			local f1, f2, f3 = table.unpack(face)
-			local v1 = shape.vs[f1]
-			local v2 = shape.vs[f2]
-			local v3 = shape.vs[f3]
+			local v1 = shape.vs.v[f1-1]
+			local v2 = shape.vs.v[f2-1]
+			local v3 = shape.vs.v[f3-1]
 			local edgeDivs = subdivIndex
 			local patchVs = table()
 			local patchIndexes = table()
@@ -520,15 +535,12 @@ print('subdivIndex', subdivIndex)
 			-- now find basis for vertex
 			-- sort by angle
 			-- and find the one opposite this
-			local ex = shape.qs[vertexIndex]:xAxis()
-			local ey = shape.qs[vertexIndex]:yAxis()
-
-			ex = matrix{ex:unpack()}
-			ey = matrix{ey:unpack()}
+			local ex = shape.qs.v[vertexIndex-1]:xAxis()
+			local ey = shape.qs.v[vertexIndex-1]:yAxis()
 
 			nbhdVtxIndexes:sort(function(a,b)
-				local va = shape.vs[a]
-				local vb = shape.vs[b]
+				local va = shape.vs.v[a-1]
+				local vb = shape.vs.v[b-1]
 				return math.atan2(va * ey, va * ex) 
 					< math.atan2(vb * ey, vb * ex)
 			end)
@@ -537,8 +549,8 @@ print('subdivIndex', subdivIndex)
 	end
 
 	-- [[ normalize new vtxs
-	for i=1,#shape.vs do
-		shape.vs[i] = shape.vs[i]:normalize()
+	for i=0,#shape.vs-1 do
+		shape.vs.v[i] = shape.vs.v[i]:normalize()
 	end
 	--]]
 end
@@ -577,10 +589,10 @@ function App:initGame()
 	players = table()
 	for playerIndex=1,vars.numPlayers do
 		local vtxDists = range(#shape.vs):mapi(function(i)
-			local v = shape.vs[i]
+			local v = shape.vs.v[i-1]
 			local dist = 0
 			for _,oplayer in ipairs(players) do
-				dist = dist + (shape.vs[oplayer.vertexIndex] - v):norm()	-- TODO arclen
+				dist = dist + (shape.vs.v[oplayer.vertexIndex-1] - v):length()	-- TODO arclen
 			end
 			return dist
 		end)
@@ -594,10 +606,10 @@ assert(vertexIndex)
 		}
 		players:insert(player)
 		
-		local v1 = shape.vs[vertexIndex]
+		local v1 = shape.vs.v[vertexIndex-1]
 		local vtxsSorted = table(subdiv.vtxsUsedIndexes)
 		vtxsSorted:sort(function(a,b)
-			return shape.vs[a]:dot(v1) < shape.vs[b]:dot(v1)
+			return shape.vs.v[a-1]:dot(v1) < shape.vs.v[b-1]:dot(v1)
 		end)
 		vtxsSorted = vtxsSorted:sub(1, vars.numPieces)
 	
@@ -624,7 +636,7 @@ assert(vertexIndex)
 		haveJumped = nil
 	
 		--[[ TODO slowly interpolate to ...
-		local ez = shape.vs[players[playerTurn].vertexIndex]
+		local ez = shape.vs.v[players[playerTurn-1].vertexIndex]
 		local ex, ey = vecToBasis(ez)
 		self.view.angle:fromMatrix{ex, ey, ez}
 		--]]
@@ -861,9 +873,10 @@ void main() {
 	for _,shape in ipairs(shapes) do
 
 		local vtxs = table()
-		for _,v in ipairs(shape.vs) do
-			for j,x in ipairs(v) do
-				vtxs:insert(x)
+		for i=0,#shape.vs-1 do
+			local v = shape.vs.v+i
+			for j=0,2 do
+				vtxs:insert(v.s[j])
 			end
 		end
 		local vtxGPU = GLArrayBuffer{
@@ -1034,7 +1047,7 @@ function App:update(...)
 
 		self.modelMat
 			:setIdent()
-			:setTranslate(shape.vs[vi]:unpack())
+			:setTranslate(shape.vs.v[vi-1]:unpack())
 			:applyScale(.1, .1, .1)
 
 		-- TODO this doesn't work
