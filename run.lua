@@ -6,7 +6,7 @@ local assert = require 'ext.assert'
 local class = require 'ext.class'
 local math = require 'ext.math'
 local op = require 'ext.op'
-local vec4i = require 'vec-ffi.vec4i'	-- or ui?
+local vec4i = require 'vec-ffi.vec4i'
 local vec4f = require 'vec-ffi.vec4f'
 local quatf = require 'vec-ffi.quatf'
 local vec4x4f = require 'vec-ffi.vec4x4f'
@@ -27,6 +27,9 @@ local sqrt3 = math.sqrt(3)
 local sqrt5 = math.sqrt(5)
 local _1_sqrt3 = 1 / sqrt3
 
+
+
+-- platonic solids
 local shapes = {
 	{
 		name = 'tetrahedron',
@@ -157,6 +160,8 @@ local shapes = {
 	},
 }
 
+-- get maximum vector of n cross x y z basis dirs
+-- i.e. max col/row of Levi-Civita w/ n
 local function maxPerp(n)
 	assert.len(n, 3)
 	n = n:normalize()
@@ -166,16 +171,13 @@ local function maxPerp(n)
 	local xSq = x:normSq()
 	local ySq = y:normSq()
 	local zSq = z:normSq()
-	if xSq > ySq then
-		if xSq > zSq then
-			return x:normalize()
-		end
+	if xSq > ySq and xSq > zSq then
+		return x:normalize()
+	elseif ySq > xSq and ySq > zSq then
+		return y:normalize()
 	else
-		if ySq > zSq then
-			return y:normalize()
-		end
+		return z:normalize()
 	end
-	return z:normalize()
 end
 
 local function vecToBasis(n)
@@ -193,11 +195,15 @@ for _,shape in ipairs(shapes) do
 	end
 end
 
+-- store a subdivision of the mesh
+-- but really this is just a mesh itself
+-- should I use the .obj mesh class?
 local Subdiv = class()
 function Subdiv:init()
 	self.edges = table()
 	self.faces = table()
 end
+
 
 for _,shape in ipairs(shapes) do
 	shape.vtxAdj = {}
@@ -761,6 +767,7 @@ function App:initGL()
 		usage = gl.GL_STATIC_DRAW,
 	}:unbind()
 
+
 	self.drawFBOObj = GLSceneObject{
 		program = {
 			version = 'latest',
@@ -776,14 +783,14 @@ void main() {
 			fragmentCode = [[
 in vec2 texcoordv;
 layout(location=0) out vec4 fragColor;
-uniform sampler2D fboTex;
+uniform sampler2D tex;
 void main() {
-	fragColor = texture(fboTex, texcoordv);
+	fragColor = texture(tex, texcoordv);
 }
 ]],
 		},
 		uniforms = {
-			fboTex = 0,
+			tex = 0,
 		},
 		geometry = {
 			mode = gl.GL_TRIANGLE_STRIP,
@@ -792,7 +799,7 @@ void main() {
 	}
 
 
-
+	-- solid-color shader
 	local lineProgram = GLProgram{
 		version = 'latest',
 		precision = 'best',
@@ -817,6 +824,8 @@ void main() {
 ]],
 	}:useNone()
 
+
+	-- really this is a cheap-diffuse-lighting shader (where normal = vertex)
 	local faceProgram = GLProgram{
 		version = 'latest',
 		precision = 'best',
@@ -845,6 +854,7 @@ void main() {
 }
 ]],
 	}:useNone()
+
 
 	self.modelMat = vec4x4f():setIdent()
 
