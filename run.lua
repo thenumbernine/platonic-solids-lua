@@ -1,6 +1,7 @@
 #!/usr/bin/env luajit
 local cmdline = require 'ext.cmdline'(...)
 local table = require 'ext.table'
+local range = require 'ext.range'
 local assert = require 'ext.assert'
 local class = require 'ext.class'
 local math = require 'ext.math'
@@ -416,7 +417,7 @@ for _,shape in ipairs(shapes) do
 	-- but really
 	-- dodecahedron has 5-sided objects
 	-- how do you do opposing vertexes on a face?
-	for subdivIndex=2,10 do
+	for subdivIndex=2,6 do
 print('building subdivIndex', subdivIndex)
 		local subdiv = Subdiv()
 --[[ divide the previous iterations
@@ -917,6 +918,34 @@ void main() {
 		end
 	end
 
+	self.placeObj = GLSceneObject{
+		program = faceProgram,
+		vertexes = {
+			dim = 3,
+			data = range(0,40*3-1):mapi(function(i)
+				local j = i % 3
+				local k = math.floor(i / 3)
+				local th = k/40 * 2 * math.pi
+				if j == 0 then
+					return math.cos(th)
+				elseif j == 1 then
+					return math.sin(th)
+				else
+					return 0
+				end
+			end),
+		},
+		geometry = {
+			mode = gl.GL_TRIANGLE_FAN,
+		},
+		uniforms = {
+			modelMat = self.modelMat.ptr,
+			viewMat = self.view.mvMat.ptr,
+			projMat = self.view.projMat.ptr,
+			color = {0,0,0,0},
+			shapeID = {-1,-1,-1,-1},
+		},
+	}
 
 	self:refreshFBO()
 
@@ -1015,6 +1044,7 @@ function App:update(...)
 		local piecePlayerIndex = -1
 		local pieceIndex = -1
 		local color
+		local globj
 		if piece then
 			piecePlayerIndex = piece.playerIndex
 			pieceIndex = piece.index
@@ -1025,6 +1055,7 @@ function App:update(...)
 			else
 				color = players[piecePlayerIndex].color.s
 			end
+			globj = shapes[5].faceObj
 		else
 			local startPlayerIndex = playerStartForVtxIndex[vi]
 			if startPlayerIndex then
@@ -1035,6 +1066,7 @@ function App:update(...)
 				-- .... set it black
 				color = {0,0,0,0}
 			end
+			globj = self.placeObj
 		end
 		shapeID:set(piecePlayerIndex, pieceIndex, vi, 0)
 
@@ -1049,7 +1081,7 @@ function App:update(...)
 			self.fbo:drawBuffers(gl.GL_COLOR_ATTACHMENT1)
 		end
 
-		shapes[5].faceObj:draw{
+		globj:draw{
 			uniforms = {
 				color = color,
 				shapeID = shapeID.s,
