@@ -184,7 +184,7 @@ local function maxPerp(n)
 	end
 end
 
-local function vecToBasis(n)
+local function vecTo3x3Sep(n)
 	local x = maxPerp(n)
 	return x, n:cross(x)
 end
@@ -339,14 +339,26 @@ for _,shape in ipairs(shapes) do
 
 
 	local function vecToQuat(v)
-		local x,y = vecToBasis(v:normalize())
+		local x,y = vecTo3x3Sep(v:normalize())
 		return quatf():fromMatrix{x,y,v}
 	end
 
-	print('building quats')
-	shape.qs = vector('quatf_t', #shape.vs)
+	local function vecTo4x4(z)
+		z = z:normalize()
+		local x, y = vecTo3x3Sep(z)
+		-- if row major then transpose ...
+		return vec4x4f(
+			vec4f(x.x, y.x, z.x, z.x),
+			vec4f(x.y, y.y, z.y, z.y),
+			vec4f(x.z, y.z, z.z, z.z),
+			vec4f(  0,   0,   0,   1)
+		)
+	end
+
+	print('building basis')
+	shape.qs = vector('vec4x4f_t', #shape.vs)
 	for i=0,#shape.vs-1 do
-		shape.qs.v[i] = vecToQuat(shape.vs.v[i])
+		shape.qs.v[i] = vecTo4x4(shape.vs.v[i])
 	end
 
 
@@ -385,7 +397,7 @@ for _,shape in ipairs(shapes) do
 			shape.vtxForKey[key] = i
 			assert.eq(#shape.vs, #shape.qs)
 			shape.vs:emplace_back()[0] = v
-			shape.qs:emplace_back()[0] = vecToQuat(v)
+			shape.qs:emplace_back()[0] = vecTo4x4(v)
 		end
 		return i
 	end
@@ -521,8 +533,9 @@ print('building subdivIndex', subdivIndex)
 			-- now find basis for vertex
 			-- sort by angle
 			-- and find the one opposite this
-			local ex = shape.qs.v[vertexIndex-1]:xAxis()
-			local ey = shape.qs.v[vertexIndex-1]:yAxis()
+			local xform = shape.qs.v[vertexIndex-1]
+			local ex = vec3f(xform.x.x, xform.y.x, xform.z.x)
+			local ey = vec3f(xform.x.y, xform.y.y, xform.z.y)
 
 			nbhdVtxIndexes:sort(function(a,b)
 				local va = shape.vs.v[a-1]
@@ -638,7 +651,7 @@ assert(vertexIndex)
 
 		--[[ TODO slowly interpolate to ...
 		local ez = shape.vs.v[players[playerTurn-1].vertexIndex]
-		local ex, ey = vecToBasis(ez)
+		local ex, ey = vecTo3x3Sep(ez)
 		self.view.angle:fromMatrix{ex, ey, ez}
 		--]]
 	end
@@ -1055,7 +1068,7 @@ function App:update(...)
 			else
 				color = players[piecePlayerIndex].color.s
 			end
-			globj = shapes[5].faceObj
+			globj = shapes[5].subdivs[6].faceObj
 		else
 			local startPlayerIndex = playerStartForVtxIndex[vi]
 			if startPlayerIndex then
@@ -1071,9 +1084,10 @@ function App:update(...)
 		shapeID:set(piecePlayerIndex, pieceIndex, vi, 0)
 
 		self.modelMat
-			:setIdent()
-			:setTranslate(shape.vs.v[vi-1]:unpack())
-			:applyScale(.1, .1, .1)
+			--:setIdent()
+			--:setTranslate(shape.vs.v[vi-1]:unpack())
+			:copy(shape.qs.v[vi-1])
+			:applyScale(.07, .07, .07)
 
 		-- TODO this doesn't work
 		-- how to make it just write the shapeID but not the color?
