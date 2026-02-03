@@ -1,12 +1,11 @@
 #!/usr/bin/env luajit
 local cmdline = require 'ext.cmdline'(...)
 local table = require 'ext.table'
-local range = require 'ext.range'
 local assert = require 'ext.assert'
 local class = require 'ext.class'
 local math = require 'ext.math'
 local op = require 'ext.op'
-local vector = require 'ffi.cpp.vector'
+local vector = require 'ffi.cpp.vector-lua'
 local vec3f = require 'vec-ffi.vec3f'
 local vec4i = require 'vec-ffi.vec4i'
 local vec4f = require 'vec-ffi.vec4f'
@@ -31,22 +30,17 @@ local sqrt5 = math.sqrt(5)
 local _1_sqrt3 = 1 / sqrt3
 
 
-local vector_vec3f = vector'vec3f_t'
-local vector_quatf = vector'quatf_t'
-local vector_vec3x3f = vector'vec3x3f_t'
-
-
 -- platonic solids
 local shapes = {
 	{
 		name = 'tetrahedron',
-		vs = vector_vec3f{
+		vs = vector('vec3f_t', {
 			{0, 0, 1},
 			{0, (2 * sqrt2) / 3, -1 / 3},
 			{sqrt2 / sqrt3, -sqrt2 / 3, -1 / 3},
 			{-sqrt2 / sqrt3, -sqrt2 / 3, -1 / 3},
-		},
-		xformBasis = vector_vec3x3f{
+		}),
+		xformBasis = vector('vec3x3f_t', {
 			{
 				{-.5, -sqrt3/2, 0},
 				{sqrt3/2, -.5, 0},
@@ -57,11 +51,11 @@ local shapes = {
 				{1/(2*sqrt3), 5/6, -sqrt2/3},
 				{sqrt2/sqrt3, -sqrt2/3, -1/3},
 			},
-		},
+		}),
 	},
 	{
 		name = 'cube',
-		vs = vector_vec3f{
+		vs = vector('vec3f_t', {
 			{_1_sqrt3, _1_sqrt3, _1_sqrt3},
 			{-_1_sqrt3, _1_sqrt3, _1_sqrt3},
 			{_1_sqrt3, -_1_sqrt3, _1_sqrt3},
@@ -70,8 +64,8 @@ local shapes = {
 			{-_1_sqrt3, _1_sqrt3, -_1_sqrt3},
 			{_1_sqrt3, -_1_sqrt3, -_1_sqrt3},
 			{-_1_sqrt3, -_1_sqrt3, -_1_sqrt3},
-		},
-		xformBasis = vector_vec3x3f{
+		}),
+		xformBasis = vector('vec3x3f_t', {
 			{
 				{1, 0, 0},
 				{0, 0, -1},
@@ -82,53 +76,50 @@ local shapes = {
 				{0, 1, 0},
 				{-1, 0, 0},
 			}
-		},
+		}),
 	},
 	{
 		name = 'octahedron',
-		vs = vector_vec3f{
+		vs = vector('vec3f_t', {
 			{1, 0, 0},
 			{0, 0, 1},
 			{0, 1, 0},
 			{0, -1, 0},
 			{0, 0, -1},
 			{-1, 0, 0},
-		},
-		xformBasis = vector_vec3x3f{
+		}),
+		xformBasis = vector('vec3x3f_t', {
 			{{1, 0, 0}, {0, 0, -1}, {0, 1, 0}},
 			{{0, 0, 1}, {0, 1, 0}, {-1, 0, 0}}
-		}
+		}),
 	},
 	{
 		name = 'dodecahedron',
-		vs = vector_vec3f(
-			-- does vector have a .map ?
-			table.mapi({
-				{(3 + sqrt5) / 2, -1, 0},
-				{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
-				{(3 + sqrt5) / 2, 1, 0},
-				{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
-				{1, 0, (3 + sqrt5) / 2},
-				{(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
-				{0, -(3 + sqrt5) / 2, 1},
-				{0, -(3 + sqrt5) / 2, -1},
-				{(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
-				{1, 0, -(3 + sqrt5) / 2},
-				{-1, 0, (3 + sqrt5) / 2},
-				{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
-				{0, (3 + sqrt5) / 2, 1},
-				{0, (3 + sqrt5) / 2, -1},
-				{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
-				{-1, 0, -(3 + sqrt5) / 2},
-				{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
-				{-(3 + sqrt5) / 2, -1, 0},
-				{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
-				{-(3 + sqrt5) / 2, 1, 0}
-			}, function(v) 
-				return vec3f(v) / math.sqrt((9 + 3 * sqrt5) / 2) 
-			end)
-		),
-		xformBasis = vector_vec3x3f{
+		vs = vector('vec3f_t', {
+			{(3 + sqrt5) / 2, -1, 0},
+			{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
+			{(3 + sqrt5) / 2, 1, 0},
+			{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+			{1, 0, (3 + sqrt5) / 2},
+			{(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
+			{0, -(3 + sqrt5) / 2, 1},
+			{0, -(3 + sqrt5) / 2, -1},
+			{(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+			{1, 0, -(3 + sqrt5) / 2},
+			{-1, 0, (3 + sqrt5) / 2},
+			{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
+			{0, (3 + sqrt5) / 2, 1},
+			{0, (3 + sqrt5) / 2, -1},
+			{-(1 + sqrt5) / 2, -(1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+			{-1, 0, -(3 + sqrt5) / 2},
+			{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, (1 + sqrt5) / 2},
+			{-(3 + sqrt5) / 2, -1, 0},
+			{-(1 + sqrt5) / 2, (1 + sqrt5) / 2, -(1 + sqrt5) / 2},
+			{-(3 + sqrt5) / 2, 1, 0}
+		}):map(function(v)
+			return v / math.sqrt((9 + 3 * sqrt5) / 2)
+		end),
+		xformBasis = vector('vec3x3f_t', {
 			{	--  T3
 				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
 				{-1/2, -(1-sqrt5)/4, -(1+sqrt5)/4},
@@ -139,29 +130,27 @@ local shapes = {
 				{(1-sqrt5)/4, (1+sqrt5)/4, -1/2},
 				{(1+sqrt5)/4, 1/2, -(1-sqrt5)/4},
 			}
-		},
+		}),
 	},
 	{
 		name = 'icosahedron',
-		vs = vector_vec3f(
-			table.mapi({
-				{0, (-1+sqrt5)/4, 1/2},
-				{1/2, 0, (-1+sqrt5)/4},
-				{-1/2, 0, (-1+sqrt5)/4},
-				{(-1+sqrt5)/4, 1/2, 0},
-				{(1-sqrt5)/4, 1/2, 0},
-				{0, (1-sqrt5)/4, 1/2},
-				{0, (-1+sqrt5)/4, -1/2},
-				{(-1+sqrt5)/4, -1/2, 0},
-				{(1-sqrt5)/4, -1/2, 0},
-				{1/2, 0, (1-sqrt5)/4},
-				{-1/2, 0, (1-sqrt5)/4},
-				{0, (1-sqrt5)/4, -1/2},
-			}, function(v)
-				return vec3f(v) / math.sqrt((5 - sqrt5) / 8)
-			end)
-		),
-		xformBasis = vector_vec3x3f{
+		vs = vector('vec3f_t', {
+			{0, (-1+sqrt5)/4, 1/2},
+			{1/2, 0, (-1+sqrt5)/4},
+			{-1/2, 0, (-1+sqrt5)/4},
+			{(-1+sqrt5)/4, 1/2, 0},
+			{(1-sqrt5)/4, 1/2, 0},
+			{0, (1-sqrt5)/4, 1/2},
+			{0, (-1+sqrt5)/4, -1/2},
+			{(-1+sqrt5)/4, -1/2, 0},
+			{(1-sqrt5)/4, -1/2, 0},
+			{1/2, 0, (1-sqrt5)/4},
+			{-1/2, 0, (1-sqrt5)/4},
+			{0, (1-sqrt5)/4, -1/2},
+		}):map(function(v)
+			return v / math.sqrt((5 - sqrt5) / 8)
+		end),
+		xformBasis = vector('vec3x3f_t', {
 			{
 				{(-1+sqrt5)/4, -(1+sqrt5)/4, -1/2},
 				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
@@ -172,7 +161,7 @@ local shapes = {
 				{-1/2, (-1+sqrt5)/4, -(1+sqrt5)/4},
 				{(1-sqrt5)/4, (1+sqrt5)/4, 1/2},
 			},
-		},
+		}),
 	},
 }
 
@@ -210,13 +199,13 @@ function Subdiv:init()
 	self.faces = table()
 end
 
-
 for _,shape in ipairs(shapes) do
 	shape.vtxAdj = {}
 	for i=1,#shape.vs do
 		shape.vtxAdj[i] = {}
 	end
 
+	print('building edges')
 	local visited = table()
 	do
 		local function translate(v)
@@ -231,7 +220,7 @@ for _,shape in ipairs(shapes) do
 		local mInit = translate(vInit)
 
 		local function recurse(m, vIndex)
-			local visitedIndex = table.find(visited, nil, function(m1)
+			local visitedIndex = visited:find(nil, function(m1)
 				return (m - m1):normSq() < epsilon
 			end)
 
@@ -248,18 +237,14 @@ for _,shape in ipairs(shapes) do
 				local mNew = m * translate(-vInit) * xform4x4 * translate(vInit)
 
 				-- assert storage is row-major
-				local vNew = vec3f(
-					mNew.x.w,
-					mNew.y.w,
-					mNew.z.w
-				)
+				local vNew = vec3f(mNew.x.w, mNew.y.w, mNew.z.w)
 				local vIndexNew = table.find(shape.vs, nil, function(v1)
 					return (vNew - v1):normSq() < epsilon
 				end)
 				if not vIndexNew then
 					error('failed to find vertex '..vNew)
 				end
-				vIndexNew = vIndexNew + 1 
+				vIndexNew = vIndexNew + 1
 
 				if vIndex ~= vIndexNew then
 					shape.vtxAdj[vIndex][vIndexNew] = true
@@ -281,6 +266,7 @@ for _,shape in ipairs(shapes) do
 
 	-- determine polys:
 	-- group vtxs/edges by planar and traverse?
+	print('building faces')
 	shape.faces = table()	-- table of faces in-order
 	local facesets = {}		-- sets of faces ,keys are faces-in-order concat with ,
 	for i=1,#shape.vs do
@@ -355,8 +341,9 @@ for _,shape in ipairs(shapes) do
 		local x,y = vecToBasis(v:normalize())
 		return quatf():fromMatrix{x,y,v}
 	end
-	
-	shape.qs = vector_quatf(#shape.vs)
+
+	print('building quats')
+	shape.qs = vector('quatf_t', #shape.vs)
 	for i=0,#shape.vs-1 do
 		shape.qs.v[i] = vecToQuat(shape.vs.v[i])
 	end
@@ -380,18 +367,15 @@ for _,shape in ipairs(shapes) do
 	-- goes slow, TODO use key hash
 	shape.vtxForKey = {}
 	local function vtxKey(v)
-		local x,y,z = v:unpack()
-		x = 1e-3 * math.round(1e+3 * x)
-		y = 1e-3 * math.round(1e+3 * y)
-		z = 1e-3 * math.round(1e+3 * z)
-		return table{x,y,z}:concat','
+		return tostring(v:map(function(x) return 1e-3 * math.round(1e+3 * x) end))
 	end
-	
+
+	print'building vtx keys'
 	for i=1,#shape.vs do
 		local v = shape.vs.v[i-1]
 		shape.vtxForKey[vtxKey(v)] = i
 	end
-	
+
 	local function findOrCreateVertex(v)
 		local key = vtxKey(v)
 		local i = shape.vtxForKey[key]
@@ -405,6 +389,7 @@ for _,shape in ipairs(shapes) do
 		return i
 	end
 
+	print'building initial subdiv'
 	if n == 3 then
 		local subdiv = Subdiv()
 		for i,face in ipairs(shape.faces) do
@@ -432,7 +417,7 @@ for _,shape in ipairs(shapes) do
 	-- dodecahedron has 5-sided objects
 	-- how do you do opposing vertexes on a face?
 	for subdivIndex=2,10 do
-print('subdivIndex', subdivIndex)
+print('building subdivIndex', subdivIndex)
 		local subdiv = Subdiv()
 --[[ divide the previous iterations
 		for _,face in ipairs(shape.subdivs[subdivIndex-1].faces) do
@@ -518,12 +503,12 @@ print('subdivIndex', subdivIndex)
 			end
 		end
 		subdiv.vtxsUsedIndexes = subdiv.vtxsUsedSet:keys():sort()
-	
-		
+
+
 		-- build vtxNbhds
 		subdiv.vtxNbhds = {}
 		for _,vertexIndex in ipairs(subdiv.vtxsUsedIndexes) do
-		
+
 			-- TODO cache these in order per vertex
 			local nbhdVtxIndexes = table()
 			for nbhdVtxIndex in pairs(subdiv.edges[vertexIndex]) do
@@ -541,18 +526,21 @@ print('subdivIndex', subdivIndex)
 			nbhdVtxIndexes:sort(function(a,b)
 				local va = shape.vs.v[a-1]
 				local vb = shape.vs.v[b-1]
-				return math.atan2(va * ey, va * ex) 
+				return math.atan2(va * ey, va * ex)
 					< math.atan2(vb * ey, vb * ex)
 			end)
 			subdiv.vtxNbhds[vertexIndex] = nbhdVtxIndexes
 		end
 	end
 
+print'renormalizing'
 	-- [[ normalize new vtxs
 	for i=0,#shape.vs-1 do
 		shape.vs.v[i] = shape.vs.v[i]:normalize()
 	end
 	--]]
+
+print'done'
 end
 
 local vars = {
@@ -567,7 +555,7 @@ local playerTurn
 local selectedIndex
 local haveJumped
 local players
-local vtxPieces 
+local vtxPieces
 local playerStartForVtxIndex
 
 local colors = table{
@@ -588,15 +576,27 @@ function App:initGame()
 
 	players = table()
 	for playerIndex=1,vars.numPlayers do
-		local vtxDists = range(#shape.vs):mapi(function(i)
-			local v = shape.vs.v[i-1]
+		local maxDist, vertexIndex
+		for _,vi in ipairs(subdiv.vtxsUsedIndexes) do
+			local v = shape.vs.v[vi-1]
 			local dist = 0
 			for _,oplayer in ipairs(players) do
-				dist = dist + (shape.vs.v[oplayer.vertexIndex-1] - v):length()	-- TODO arclen
+				assert.le(1, oplayer.vertexIndex)
+				assert.le(oplayer.vertexIndex, #shape.vs)
+				local v2 = shape.vs.v[oplayer.vertexIndex-1]
+				--[[
+print(v, v2, 'dot', v * v2, 'acos', math.acos(v2 * v))
+				dist = dist + math.acos(v2 * v)
+				--]]
+				-- [[
+				dist = dist + (v2 - v):length()
+				--]]
 			end
-			return dist
-		end)
-		local vertexIndex = select(2, table.sup(vtxDists))
+			if not maxDist or maxDist < dist then
+				maxDist = dist
+				vertexIndex = vi
+			end
+		end
 assert(vertexIndex)
 
 		local player = {
@@ -605,19 +605,19 @@ assert(vertexIndex)
 			color = assert.index(colors, playerIndex),
 		}
 		players:insert(player)
-		
+
 		local v1 = shape.vs.v[vertexIndex-1]
 		local vtxsSorted = table(subdiv.vtxsUsedIndexes)
-		vtxsSorted:sort(function(a,b)
-			return shape.vs.v[a-1]:dot(v1) < shape.vs.v[b-1]:dot(v1)
-		end)
-		vtxsSorted = vtxsSorted:sub(1, vars.numPieces)
-	
+			:sort(function(a,b)
+				return shape.vs.v[a-1]:dot(v1) < shape.vs.v[b-1]:dot(v1)
+			end)
+			:sub(1, vars.numPieces)
+
 		for _,vi in ipairs(vtxsSorted) do
 			playerStartForVtxIndex[vi] = playerIndex
 		end
 
-		player.pieces = vtxsSorted 
+		player.pieces = vtxsSorted
 			:mapi(function(vi, i)
 				return {
 					index = i,
@@ -630,11 +630,11 @@ assert(vertexIndex)
 			vtxPieces[piece.vertexIndex] = piece
 		end
 	end
-	
+
 	local function startTurn()
 		selectedIndex = nil
 		haveJumped = nil
-	
+
 		--[[ TODO slowly interpolate to ...
 		local ez = shape.vs.v[players[playerTurn-1].vertexIndex]
 		local ex, ey = vecToBasis(ez)
@@ -646,7 +646,7 @@ assert(vertexIndex)
 		playerTurn = (playerTurn % vars.numPlayers) + 1
 		startTurn()
 	end
-	
+
 	playerTurn = 1
 	selectedIndex = nil
 	haveJumped = nil
@@ -660,12 +660,12 @@ print('onClick x='..x
 	..' vertexIndex='..vertexIndex
 )
 		local currentPlayer = assert.index(players, playerTurn)
-		
+
 		-- nothing is selected
 		if not selectedIndex  then
 			if playerTurn ~= playerIndex then return end
 			selectedIndex = pieceIndex
-	
+
 		-- something is selected
 		-- and we clicked the selected piece
 		elseif selectedIndex == pieceIndex
@@ -675,7 +675,7 @@ print('onClick x='..x
 			if haveJumped then
 				takeNextTurn()
 			end
-		
+
 		-- something is selected
 		-- and we clicked somewhere else
 		else
@@ -683,9 +683,9 @@ print('onClick x='..x
 
 			-- clicked somewhere one tile away
 			if subdiv.edges[vertexIndex]
-			and subdiv.edges[vertexIndex][selectedPiece.vertexIndex] 
+			and subdiv.edges[vertexIndex][selectedPiece.vertexIndex]
 			then -- and make sure it's one edge distance from selectedIndex
-				
+
 				-- clicked somewhere one tile away and empty
 				if playerIndex == -1
 				and pieceIndex == -1
@@ -697,16 +697,16 @@ print('onClick x='..x
 						vtxPieces[vertexIndex] = selectedPiece
 						takeNextTurn()
 					end
-			
+
 				-- clicked somewhere one tile away and full
 				else
 					-- if it's another piece ...
 					-- make sure it's one distance away ...
 					-- then hop over it.
-				
+
 					--local otherPiecePlayer = assert.index(players, playerIndex)
 					--local otherPiece = assert.index(otherPiecePlayer.pieces, pieceIndex)
-					
+
 					-- now find the next step past this piece
 					print('clicked other piece')
 
@@ -715,14 +715,14 @@ print('onClick x='..x
 					print('source vertexIndex', selectedPiece.vertexIndex)
 					print('clicked vertexIndex', vertexIndex)
 					print('nbhd', nbhdVtxIndexes:concat', ')
-				
+
 					local i = nbhdVtxIndexes:find(selectedPiece.vertexIndex)
 					assert(i, "the selected index vertex should be in the neighborhood")
-					
+
 					i = ((i-1 + math.floor(#nbhdVtxIndexes/2)) % #nbhdVtxIndexes) + 1
-				
+
 					local jumpToVtxIndex = nbhdVtxIndexes[i]
-					
+
 					if not vtxPieces[jumpToVtxIndex] then
 						-- exchange places
 						vtxPieces[selectedPiece.vertexIndex] = nil
@@ -731,7 +731,7 @@ print('onClick x='..x
 						haveJumped = true
 					end
 				end
-			
+
 			-- clicked somewhere more than one tile away
 			else
 				-- first make sure its empty
@@ -744,20 +744,20 @@ print('onClick x='..x
 						if vtxPieces[nbhdVI] then
 							-- and then  see if any of their neighborhoods include this vertex
 							local nbhdVtxIndexes = subdiv.vtxNbhds[nbhdVI]
-							
+
 							local i = nbhdVtxIndexes:find(selectedPiece.vertexIndex)
 							-- and if so, skip that piece
 							if i then
 								i = ((i-1 + math.floor(#nbhdVtxIndexes/2)) % #nbhdVtxIndexes) + 1
-							
+
 								local jumpToVtxIndex = nbhdVtxIndexes[i]
-								
+
 								if jumpToVtxIndex == vertexIndex then
 									-- exchange places
 									vtxPieces[selectedPiece.vertexIndex] = nil
 									selectedPiece.vertexIndex = jumpToVtxIndex
 									vtxPieces[jumpToVtxIndex] = selectedPiece
-									haveJumped = true							
+									haveJumped = true
 								end
 							end
 						end
@@ -772,7 +772,7 @@ local selectedPieceColor = vec4f(1, .75, .5, 1)
 function App:initGL()
 	App.super.initGL(self)
 
-	
+
 	local billboardPointVtxBuf = GLArrayBuffer{
 		dim = 2,
 		data = {-1, -1, 1, -1, -1, 1, 1, 1},
@@ -871,17 +871,10 @@ void main() {
 	self.modelMat = vec4x4f():setIdent()
 
 	for _,shape in ipairs(shapes) do
-
-		local vtxs = table()
-		for i=0,#shape.vs-1 do
-			local v = shape.vs.v+i
-			for j=0,2 do
-				vtxs:insert(v.s[j])
-			end
-		end
 		local vtxGPU = GLArrayBuffer{
 			dim = 3,
-			data = vtxs,
+			data = shape.vs.v,
+			size = shape.vs:getNumBytes(),
 			usage = gl.GL_STATIC_DRAW,
 		}:unbind()
 
@@ -926,7 +919,7 @@ void main() {
 
 
 	self:refreshFBO()
-	
+
 	-- these only work on desktop GL
 	-- in GLES3 desktop, neither glPointSize nor gl_PointSize works
 	-- in WebGL?
@@ -987,9 +980,9 @@ App.viewDist = 2
 
 local clickShapeID = vec4i()
 
-local clearShapeID = vec4i(-1,-1,-1,-1) 
+local clearShapeID = vec4i(-1,-1,-1,-1)
 local clearColor = vec4f(1,1,1,1)
-local shapeID = vec4i(-1,-1,-1,-1) 
+local shapeID = vec4i(-1,-1,-1,-1)
 
 function App:update(...)
 	self.fbo:bind()
@@ -1013,8 +1006,8 @@ function App:update(...)
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
 		subdiv.lineObj:draw()
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-		-- TODO TODO 				
-		-- also draw the dual's vertexIndex so we can click the shape surface	
+		-- TODO TODO
+		-- also draw the dual's vertexIndex so we can click the shape surface
 	end
 
 	for _,vi in ipairs(subdiv.vtxsUsedIndexes) do
@@ -1025,7 +1018,7 @@ function App:update(...)
 		if piece then
 			piecePlayerIndex = piece.playerIndex
 			pieceIndex = piece.index
-			if selectedIndex == pieceIndex 
+			if selectedIndex == pieceIndex
 			and piecePlayerIndex == playerTurn
 			then
 				color = selectedPieceColor.s
@@ -1062,7 +1055,7 @@ function App:update(...)
 				shapeID = shapeID.s,
 			},
 		}
-		
+
 		if not color then
 			self.fbo:drawBuffers(gl.GL_COLOR_ATTACHMENT0, gl.GL_COLOR_ATTACHMENT1)
 		end
