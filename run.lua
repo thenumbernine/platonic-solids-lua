@@ -35,13 +35,13 @@ local _1_sqrt3 = 1 / sqrt3
 local shapes = {
 	{
 		name = 'tetrahedron',
-		vs = vector('vec3f_t', {
+		vs = vector(vec3f, {
 			{0, 0, 1},
 			{0, (2 * sqrt2) / 3, -1 / 3},
 			{sqrt2 / sqrt3, -sqrt2 / 3, -1 / 3},
 			{-sqrt2 / sqrt3, -sqrt2 / 3, -1 / 3},
 		}),
-		xformBasis = vector('vec3x3f_t', {
+		xformBasis = vector(vec3x3f, {
 			{
 				{-.5, -sqrt3/2, 0},
 				{sqrt3/2, -.5, 0},
@@ -56,7 +56,7 @@ local shapes = {
 	},
 	{
 		name = 'cube',
-		vs = vector('vec3f_t', {
+		vs = vector(vec3f, {
 			{_1_sqrt3, _1_sqrt3, _1_sqrt3},
 			{-_1_sqrt3, _1_sqrt3, _1_sqrt3},
 			{_1_sqrt3, -_1_sqrt3, _1_sqrt3},
@@ -66,7 +66,7 @@ local shapes = {
 			{_1_sqrt3, -_1_sqrt3, -_1_sqrt3},
 			{-_1_sqrt3, -_1_sqrt3, -_1_sqrt3},
 		}),
-		xformBasis = vector('vec3x3f_t', {
+		xformBasis = vector(vec3x3f, {
 			{
 				{1, 0, 0},
 				{0, 0, -1},
@@ -81,7 +81,7 @@ local shapes = {
 	},
 	{
 		name = 'octahedron',
-		vs = vector('vec3f_t', {
+		vs = vector(vec3f, {
 			{1, 0, 0},
 			{0, 0, 1},
 			{0, 1, 0},
@@ -89,14 +89,14 @@ local shapes = {
 			{0, 0, -1},
 			{-1, 0, 0},
 		}),
-		xformBasis = vector('vec3x3f_t', {
+		xformBasis = vector(vec3x3f, {
 			{{1, 0, 0}, {0, 0, -1}, {0, 1, 0}},
 			{{0, 0, 1}, {0, 1, 0}, {-1, 0, 0}}
 		}),
 	},
 	{
 		name = 'dodecahedron',
-		vs = vector('vec3f_t', {
+		vs = vector(vec3f, {
 			{(3 + sqrt5) / 2, -1, 0},
 			{(1 + sqrt5) / 2, -(1 + sqrt5) / 2, (1 + sqrt5) / 2},
 			{(3 + sqrt5) / 2, 1, 0},
@@ -120,7 +120,7 @@ local shapes = {
 		}):map(function(v)
 			return v / math.sqrt((9 + 3 * sqrt5) / 2)
 		end),
-		xformBasis = vector('vec3x3f_t', {
+		xformBasis = vector(vec3x3f, {
 			{	--  T3
 				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
 				{-1/2, -(1-sqrt5)/4, -(1+sqrt5)/4},
@@ -135,7 +135,7 @@ local shapes = {
 	},
 	{
 		name = 'icosahedron',
-		vs = vector('vec3f_t', {
+		vs = vector(vec3f, {
 			{0, (-1+sqrt5)/4, 1/2},
 			{1/2, 0, (-1+sqrt5)/4},
 			{-1/2, 0, (-1+sqrt5)/4},
@@ -151,7 +151,7 @@ local shapes = {
 		}):map(function(v)
 			return v / math.sqrt((5 - sqrt5) / 8)
 		end),
-		xformBasis = vector('vec3x3f_t', {
+		xformBasis = vector(vec3x3f, {
 			{
 				{(-1+sqrt5)/4, -(1+sqrt5)/4, -1/2},
 				{(1+sqrt5)/4, 1/2, (1-sqrt5)/4},
@@ -356,7 +356,7 @@ for _,shape in ipairs(shapes) do
 	end
 
 	print('building basis')
-	shape.qs = vector('vec4x4f_t', #shape.vs)
+	shape.qs = vector(vec4x4f, #shape.vs)
 	for i=0,#shape.vs-1 do
 		shape.qs.v[i] = vecTo4x4(shape.vs.v[i])
 	end
@@ -534,6 +534,8 @@ print('building subdivIndex', subdivIndex)
 			-- sort by angle
 			-- and find the one opposite this
 			local xform = shape.qs.v[vertexIndex-1]
+			
+			-- TODO this would look better if qs was a 4x4 col-major, which I do define in numo9, I could put in vec-ffi ...
 			local ex = vec3f(xform.x.x, xform.y.x, xform.z.x)
 			local ey = vec3f(xform.x.y, xform.y.y, xform.z.y)
 
