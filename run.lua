@@ -175,13 +175,12 @@ local function maxPerp(n)
 	local xSq = x:normSq()
 	local ySq = y:normSq()
 	local zSq = z:normSq()
-	if xSq > ySq and xSq > zSq then
+	if xSq >= ySq and xSq >= zSq then
 		return x:normalize()
-	elseif ySq > xSq and ySq > zSq then
+	elseif ySq >= xSq and ySq >= zSq then
 		return y:normalize()
-	else
-		return z:normalize()
 	end
+	return z:normalize()
 end
 
 local function vecTo3x3Sep(n)
@@ -196,9 +195,9 @@ local function vtxKey(v)
 end
 
 local function vecTo4x4(z)
-if z:lenSq() < .1 then
-	error("vecTo4x4 got null vector " .. z .. ' len '.. z:lenSq())
-end
+	if z:lenSq() < .1 then
+		error("vecTo4x4 got null vector " .. z .. ' len '.. z:lenSq())
+	end
 	z = z:normalize()
 	local x, y = vecTo3x3Sep(z)
 	-- if row major then transpose ...
@@ -487,13 +486,14 @@ print('building subdivIndex', subdivIndex)
 		local subdiv = Subdiv()
 
 --[[ divide the previous iterations
-		for _,face in ipairs(shape.subdivs[subdivIndex-1].faces) do
+		local srcSubdiv = shape.subdivs[subdivIndex-1]
+		for _,face in ipairs(srcSubdiv.faces) do
 			assert.len(face, 3)
 			local edgeCenterIndexes = table()
 			for i=1,#face do
 				local i1 = face[i]
 				local i2 = face[(i%#face)+1]
-				local edgeCenterVtx = (shape.vs.v[i1-1] + shape.vs.v[i2-1]) * .5
+				local edgeCenterVtx = (srcSubdiv.vs.v[i1-1] + srcSubdiv.vs.v[i2-1]) * .5
 				local edgeCenterIndex = subdiv:findOrCreateVertex(edgeCenterVtx)
 				edgeCenterIndexes:insert(edgeCenterIndex)
 			end
@@ -512,9 +512,9 @@ print('building subdivIndex', subdivIndex)
 local numsrcvtxs = #srcSubdiv.vs
 		for _,face in ipairs(srcSubdiv.faces) do
 			local f1, f2, f3 = table.unpack(face)
-assert.le(1, f1) assert.le(f1, numsrcvtxs)
-assert.le(1, f2) assert.le(f2, numsrcvtxs)
-assert.le(1, f3) assert.le(f3, numsrcvtxs)
+			assert.le(1, f1) assert.le(f1, numsrcvtxs)
+			assert.le(1, f2) assert.le(f2, numsrcvtxs)
+			assert.le(1, f3) assert.le(f3, numsrcvtxs)
 			local v1 = srcSubdiv.vs.v[f1-1]
 			local v2 = srcSubdiv.vs.v[f2-1]
 			local v3 = srcSubdiv.vs.v[f3-1]
@@ -529,24 +529,6 @@ assert.le(1, f3) assert.le(f3, numsrcvtxs)
 				for j=0,edgeDivs-i do
 					local fj = j / edgeDivs
 					local v = v1 + da * fi + db * fj
-if v:lenSq() < .1 then
-	print('#srcSubdiv.vs', #srcSubdiv.vs)
-	for i=0,#srcSubdiv.vs-1 do
-		print(' '..i..' '..srcSubdiv.vs.v[i])
-	end
-	error("patch created null vector " .. v ..'\n'
-		..' len '.. v:lenSq()..'\n'
-		..' face='..require 'ext.tolua'(face)..'\n'
-		..' v1='..v1..'\n'
-		..' v2='..v2..'\n'
-		..' v3='..v3..'\n'
-		..' da='..da..'\n'
-		..' fi='..fi..'\n'
-		..' db='..db..'\n'
-		..' fj='..fj..'\n'
-	)
-end
-					
 					patchIndexes[i][j] = subdiv:findOrCreateVertex(v)
 				end
 			end
