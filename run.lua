@@ -196,6 +196,9 @@ local function vtxKey(v)
 end
 
 local function vecTo4x4(z)
+if z:lenSq() < .1 then
+	error("vecTo4x4 got null vector " .. z .. ' len '.. z:lenSq())
+end
 	z = z:normalize()
 	local x, y = vecTo3x3Sep(z)
 	-- if row major then transpose ...
@@ -282,8 +285,6 @@ function Subdiv:buildMeshInfo()
 		self.vs.v[i] = self.vs.v[i]:normalize()
 	end
 	--]]
-
-
 end
 
 
@@ -507,11 +508,16 @@ print('building subdivIndex', subdivIndex)
 --]]
 -- [[ redivide the original edge
 		-- TODO barycentric subdivision
-		for _,face in ipairs(shape.subdivs[1].faces) do
+		local srcSubdiv = shape.subdivs[1]
+local numsrcvtxs = #srcSubdiv.vs
+		for _,face in ipairs(srcSubdiv.faces) do
 			local f1, f2, f3 = table.unpack(face)
-			local v1 = shape.vs.v[f1-1]
-			local v2 = shape.vs.v[f2-1]
-			local v3 = shape.vs.v[f3-1]
+assert.le(1, f1) assert.le(f1, numsrcvtxs)
+assert.le(1, f2) assert.le(f2, numsrcvtxs)
+assert.le(1, f3) assert.le(f3, numsrcvtxs)
+			local v1 = srcSubdiv.vs.v[f1-1]
+			local v2 = srcSubdiv.vs.v[f2-1]
+			local v3 = srcSubdiv.vs.v[f3-1]
 			local edgeDivs = subdivIndex
 			local patchVs = table()
 			local patchIndexes = table()
@@ -523,6 +529,24 @@ print('building subdivIndex', subdivIndex)
 				for j=0,edgeDivs-i do
 					local fj = j / edgeDivs
 					local v = v1 + da * fi + db * fj
+if v:lenSq() < .1 then
+	print('#srcSubdiv.vs', #srcSubdiv.vs)
+	for i=0,#srcSubdiv.vs-1 do
+		print(' '..i..' '..srcSubdiv.vs.v[i])
+	end
+	error("patch created null vector " .. v ..'\n'
+		..' len '.. v:lenSq()..'\n'
+		..' face='..require 'ext.tolua'(face)..'\n'
+		..' v1='..v1..'\n'
+		..' v2='..v2..'\n'
+		..' v3='..v3..'\n'
+		..' da='..da..'\n'
+		..' fi='..fi..'\n'
+		..' db='..db..'\n'
+		..' fj='..fj..'\n'
+	)
+end
+					
 					patchIndexes[i][j] = subdiv:findOrCreateVertex(v)
 				end
 			end
