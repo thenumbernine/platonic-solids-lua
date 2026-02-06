@@ -583,12 +583,12 @@ local vtxPieces
 local playerStartForVtxIndex
 
 local colors = table{
-	vec4f(1,0,0,1),
-	vec4f(0,1,0,1),
-	vec4f(0,0,1,1),
-	vec4f(1,1,0,1),
-	vec4f(1,0,1,1),
-	vec4f(0,1,1,1),
+	vec4f(0,0,0,1),		-- black
+	vec4f(1,1,1,1),		-- white
+	vec4f(1,0,0,1),		-- red
+	vec4f(1,0,1,1),		-- blue
+	vec4f(0,1,0,1),		-- green
+	vec4f(1,1,0,1),		-- yellow
 }
 
 function App:initGame()
@@ -1043,7 +1043,7 @@ function App:update(...)
 	self.fbo:bind()
 	assert(self.fbo:check())
 
-	gl.glClearColor(1,1,1,1)
+	gl.glClearColor(.5, .5, .5, 1)
 	gl.glClearBufferfv(gl.GL_COLOR_BUFFER_BIT, 0, clearColor.s)
 	gl.glClearBufferiv(gl.GL_COLOR_BUFFER_BIT, 1, clearShapeID.s)
 
@@ -1085,12 +1085,12 @@ function App:update(...)
 		else
 			local startPlayerIndex = playerStartForVtxIndex[vi]
 			if startPlayerIndex then
-				color = {.5, .5, .5, 0}
+				color = {.7, .7, .7, 0}
 			else
 				-- in this case, don't draw any color, instead skip the color write
 				-- until I figure out how to skip color write. ..
 				-- .... set it black
-				color = {0,0,0,0}
+				color = {.9, .9, .9, 0}
 			end
 			globj = self.placeObj
 		end
@@ -1144,7 +1144,7 @@ function App:update(...)
 
 				self.placeObj:draw{
 					uniforms = {
-						color = {1,.5,1,1},
+						color = {.5,1,.5,1},
 						shapeID = {0,0,0,0},
 					},
 				}
