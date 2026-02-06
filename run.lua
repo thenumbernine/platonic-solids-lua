@@ -191,14 +191,102 @@ end
 
 local epsilon = 1e-3
 
+local function vtxKey(v)
+	return tostring(v:map(function(x) return 1e-3 * math.round(1e+3 * x) end))
+end
+
+local function vecTo4x4(z)
+	z = z:normalize()
+	local x, y = vecTo3x3Sep(z)
+	-- if row major then transpose ...
+	return vec4x4f(
+		vec4f(x.x, y.x, z.x, z.x),
+		vec4f(x.y, y.y, z.y, z.y),
+		vec4f(x.z, y.z, z.z, z.z),
+		vec4f(  0,   0,   0,   1)
+	)
+end
+
+
+
 -- store a subdivision of the mesh
 -- but really this is just a mesh itself
 -- should I use the .obj mesh class?
 local Subdiv = class()
+
 function Subdiv:init()
 	self.edges = table()
 	self.faces = table()
+
+	self.vtxForKey = {}		-- 1-based
+	self.vs = vector(vec3f)
+	self.qs = vector(vec4x4f)
 end
+	
+function Subdiv:findOrCreateVertex(v)
+	local key = vtxKey(v)
+	local i = self.vtxForKey[key]
+	if not i then
+		i = #self.vs + 1		-- 1-based
+		self.vtxForKey[key] = i
+		assert.eq(#self.vs, #self.qs)
+		self.vs:emplace_back()[0] = v
+		self.qs:emplace_back()[0] = vecTo4x4(v)
+	end
+	return i
+end
+
+function Subdiv:buildMeshInfo()
+	-- build edges
+	for _,face in ipairs(self.faces) do
+		for i,vi in ipairs(face) do
+			local vi2 = face[(i % #face) + 1]
+			self.edges[vi] = self.edges[vi] or {}
+			self.edges[vi][vi2] = true
+			self.edges[vi2] = self.edges[vi2] or {}
+			self.edges[vi2][vi] = true
+		end
+	end
+
+
+	-- build vtxNbhds
+	self.vtxNbhds = {}
+	for vertexIndex=1,#self.vs do
+
+		-- TODO cache these in order per vertex
+		local nbhdVtxIndexes = table()
+		for nbhdVtxIndex in pairs(self.edges[vertexIndex]) do
+			nbhdVtxIndexes:insert(nbhdVtxIndex)
+		end
+
+		-- now find basis for vertex
+		-- sort by angle
+		-- and find the one opposite this
+		local xform = self.qs.v[vertexIndex-1]
+		
+		-- TODO this would look better if qs was a 4x4 col-major, which I do define in numo9, I could put in vec-ffi ...
+		local ex = vec3f(xform.x.x, xform.y.x, xform.z.x)
+		local ey = vec3f(xform.x.y, xform.y.y, xform.z.y)
+
+		nbhdVtxIndexes:sort(function(a,b)
+			local va = self.vs.v[a-1]
+			local vb = self.vs.v[b-1]
+			return math.atan2(va * ey, va * ex)
+				< math.atan2(vb * ey, vb * ex)
+		end)
+		self.vtxNbhds[vertexIndex] = nbhdVtxIndexes
+	end
+
+	-- [[ normalize new vtxs
+	for i=0,#self.vs-1 do
+		self.vs.v[i] = self.vs.v[i]:normalize()
+	end
+	--]]
+
+
+end
+
+
 
 for _,shape in ipairs(shapes) do
 	shape.vtxAdj = {}
@@ -338,23 +426,6 @@ for _,shape in ipairs(shapes) do
 	end
 
 
-	local function vecToQuat(v)
-		local x,y = vecTo3x3Sep(v:normalize())
-		return quatf():fromMatrix{x,y,v}
-	end
-
-	local function vecTo4x4(z)
-		z = z:normalize()
-		local x, y = vecTo3x3Sep(z)
-		-- if row major then transpose ...
-		return vec4x4f(
-			vec4f(x.x, y.x, z.x, z.x),
-			vec4f(x.y, y.y, z.y, z.y),
-			vec4f(x.z, y.z, z.z, z.z),
-			vec4f(  0,   0,   0,   1)
-		)
-	end
-
 	print('building basis')
 	shape.qs = vector(vec4x4f, #shape.vs)
 	for i=0,#shape.vs-1 do
@@ -362,68 +433,49 @@ for _,shape in ipairs(shapes) do
 	end
 
 
-	shape.vtxBaseCount = #shape.vs
-
-
 	-- ok at this point ...
 	-- subdivision ...
 	shape.subdivs = table()
 
-	-- maybe for subdivisions, maintaining adjacency doesn't matter, instead draw it with glPolygonMode
-	-- https://en.wikipedia.org/wiki/Geodesic_polyhedron
-	-- first subdivision of cube and dodecahedron needs to triangulation ...
-	local n = #shape.faces[1]
-	for _,face in ipairs(shape.faces) do
-		assert.len(face, n)
-	end
-
-	-- goes slow, TODO use key hash
-	shape.vtxForKey = {}
-	local function vtxKey(v)
-		return tostring(v:map(function(x) return 1e-3 * math.round(1e+3 * x) end))
-	end
-
-	print'building vtx keys'
-	for i=1,#shape.vs do
-		local v = shape.vs.v[i-1]
-		shape.vtxForKey[vtxKey(v)] = i
-	end
-
-	local function findOrCreateVertex(v)
-		local key = vtxKey(v)
-		local i = shape.vtxForKey[key]
-		if not i then
-			i = #shape.vs + 1
-			shape.vtxForKey[key] = i
-			assert.eq(#shape.vs, #shape.qs)
-			shape.vs:emplace_back()[0] = v
-			shape.qs:emplace_back()[0] = vecTo4x4(v)
-		end
-		return i
-	end
-
 	print'building initial subdiv'
-	if n == 3 then
-		local subdiv = Subdiv()
-		for i,face in ipairs(shape.faces) do
-			subdiv.faces[i] = table(face)
-		end
-		shape.subdivs[1] = subdiv
-	else
-		local subdiv = Subdiv()
+	do
+		-- maybe for subdivisions, maintaining adjacency doesn't matter, instead draw it with glPolygonMode
+		-- https://en.wikipedia.org/wiki/Geodesic_polyhedron
+		-- first subdivision of cube and dodecahedron needs to triangulation ...
+		local n = #shape.faces[1]
 		for _,face in ipairs(shape.faces) do
-			local vtxs = face:mapi(function(i) return shape.vs.v[i-1] end)
-			local centerVtx = vtxs:sum() / #vtxs
-			local centerIndex = findOrCreateVertex(centerVtx)
-			for i=1,#face do
-				local i1 = face[i]
-				local i2 = face[(i % #face) + 1]
-				subdiv.faces:insert{centerIndex, i1, i2}
+			assert.len(face, n)
+		end
+
+		-- initial platonic solids vertexes are already distinct so...
+		local subdiv = Subdiv()
+		subdiv.vs = shape.vs:clone()
+		subdiv.qs = shape.qs:clone()
+		assert.eq(#subdiv.vs, #subdiv.qs)
+		for i=0,#shape.vs-1 do
+			subdiv.vtxForKey[vtxKey(shape.vs.v[i])] = i+1
+		end
+
+		if n == 3 then
+			for i,face in ipairs(shape.faces) do
+				subdiv.faces[i] = table(face)
+			end
+		else
+			for _,face in ipairs(shape.faces) do
+				local vtxs = face:mapi(function(i) return shape.vs.v[i-1] end)
+				local centerVtx = vtxs:sum() / #vtxs
+				local centerIndex = subdiv:findOrCreateVertex(centerVtx)
+				for i=1,#face do
+					local i1 = face[i]
+					local i2 = face[(i % #face) + 1]
+					subdiv.faces:insert{centerIndex, i1, i2}
+				end
 			end
 		end
 		shape.subdivs:insert(subdiv)
 		assert.len(shape.subdivs, 1)
 	end
+
 
 	-- ok now subdiv using "class 1"
 	-- but really
@@ -432,6 +484,7 @@ for _,shape in ipairs(shapes) do
 	for subdivIndex=2,6 do
 print('building subdivIndex', subdivIndex)
 		local subdiv = Subdiv()
+
 --[[ divide the previous iterations
 		for _,face in ipairs(shape.subdivs[subdivIndex-1].faces) do
 			assert.len(face, 3)
@@ -440,7 +493,7 @@ print('building subdivIndex', subdivIndex)
 				local i1 = face[i]
 				local i2 = face[(i%#face)+1]
 				local edgeCenterVtx = (shape.vs.v[i1-1] + shape.vs.v[i2-1]) * .5
-				local edgeCenterIndex = findOrCreateVertex(edgeCenterVtx)
+				local edgeCenterIndex = subdiv:findOrCreateVertex(edgeCenterVtx)
 				edgeCenterIndexes:insert(edgeCenterIndex)
 			end
 			assert.len(edgeCenterIndexes, 3)
@@ -470,7 +523,7 @@ print('building subdivIndex', subdivIndex)
 				for j=0,edgeDivs-i do
 					local fj = j / edgeDivs
 					local v = v1 + da * fi + db * fj
-					patchIndexes[i][j] = findOrCreateVertex(v)
+					patchIndexes[i][j] = subdiv:findOrCreateVertex(v)
 				end
 			end
 			for i=0,edgeDivs-1 do
@@ -502,59 +555,8 @@ print('building subdivIndex', subdivIndex)
 		shape.subdivs:insert(subdiv)
 		assert.len(shape.subdivs, subdivIndex)
 
-
-		-- build vtxsUsedSet / vtxsUsedIndexes / edges
-		subdiv.vtxsUsedSet = table()
-		for _,face in ipairs(subdiv.faces) do
-			for i,vi in ipairs(face) do
-				subdiv.vtxsUsedSet[vi] = true
-				local vi2 = face[(i % #face) + 1]
-				subdiv.edges[vi] = subdiv.edges[vi] or {}
-				subdiv.edges[vi][vi2] = true
-				subdiv.edges[vi2] = subdiv.edges[vi2] or {}
-				subdiv.edges[vi2][vi] = true
-			end
-		end
-		subdiv.vtxsUsedIndexes = subdiv.vtxsUsedSet:keys():sort()
-
-
-		-- build vtxNbhds
-		subdiv.vtxNbhds = {}
-		for _,vertexIndex in ipairs(subdiv.vtxsUsedIndexes) do
-
-			-- TODO cache these in order per vertex
-			local nbhdVtxIndexes = table()
-			for nbhdVtxIndex in pairs(subdiv.edges[vertexIndex]) do
-				if subdiv.vtxsUsedSet[nbhdVtxIndex] then
-					nbhdVtxIndexes:insert(nbhdVtxIndex)
-				end
-			end
-
-			-- now find basis for vertex
-			-- sort by angle
-			-- and find the one opposite this
-			local xform = shape.qs.v[vertexIndex-1]
-			
-			-- TODO this would look better if qs was a 4x4 col-major, which I do define in numo9, I could put in vec-ffi ...
-			local ex = vec3f(xform.x.x, xform.y.x, xform.z.x)
-			local ey = vec3f(xform.x.y, xform.y.y, xform.z.y)
-
-			nbhdVtxIndexes:sort(function(a,b)
-				local va = shape.vs.v[a-1]
-				local vb = shape.vs.v[b-1]
-				return math.atan2(va * ey, va * ex)
-					< math.atan2(vb * ey, vb * ex)
-			end)
-			subdiv.vtxNbhds[vertexIndex] = nbhdVtxIndexes
-		end
+		subdiv:buildMeshInfo()
 	end
-
-print'renormalizing'
-	-- [[ normalize new vtxs
-	for i=0,#shape.vs-1 do
-		shape.vs.v[i] = shape.vs.v[i]:normalize()
-	end
-	--]]
 
 print'done'
 end
@@ -593,13 +595,13 @@ function App:initGame()
 	players = table()
 	for playerIndex=1,vars.numPlayers do
 		local maxDist, vertexIndex
-		for _,vi in ipairs(subdiv.vtxsUsedIndexes) do
-			local v = shape.vs.v[vi-1]
+		for vi=1,#subdiv.vs do
+			local v = subdiv.vs.v[vi-1]
 			local dist = 0
 			for _,oplayer in ipairs(players) do
 				assert.le(1, oplayer.vertexIndex)
-				assert.le(oplayer.vertexIndex, #shape.vs)
-				local v2 = shape.vs.v[oplayer.vertexIndex-1]
+				assert.le(oplayer.vertexIndex, #subdiv.vs)
+				local v2 = subdiv.vs.v[oplayer.vertexIndex-1]
 				--[[
 print(v, v2, 'dot', v * v2, 'acos', math.acos(v2 * v))
 				dist = dist + math.acos(v2 * v)
@@ -622,10 +624,10 @@ assert(vertexIndex)
 		}
 		players:insert(player)
 
-		local v1 = shape.vs.v[vertexIndex-1]
-		local vtxsSorted = table(subdiv.vtxsUsedIndexes)
+		local v1 = subdiv.vs.v[vertexIndex-1]
+		local vtxsSorted = range(#subdiv.vs)
 			:sort(function(a,b)
-				return shape.vs.v[a-1]:dot(v1) < shape.vs.v[b-1]:dot(v1)
+				return subdiv.vs.v[a-1]:dot(v1) < subdiv.vs.v[b-1]:dot(v1)
 			end)
 			:sub(1, vars.numPieces)
 
@@ -652,7 +654,7 @@ assert(vertexIndex)
 		haveJumped = nil
 
 		--[[ TODO slowly interpolate to ...
-		local ez = shape.vs.v[players[playerTurn-1].vertexIndex]
+		local ez = subdiv.vs.v[players[playerTurn-1].vertexIndex]
 		local ex, ey = vecTo3x3Sep(ez)
 		self.view.angle:fromMatrix{ex, ey, ez}
 		--]]
@@ -740,6 +742,7 @@ print('onClick x='..x
 					local jumpToVtxIndex = nbhdVtxIndexes[i]
 
 					if not vtxPieces[jumpToVtxIndex] then
+print('jumping from', selectedPiece.vertexIndex, 'to', jumpToVtxIndex)
 						-- exchange places
 						vtxPieces[selectedPiece.vertexIndex] = nil
 						selectedPiece.vertexIndex = jumpToVtxIndex
@@ -769,6 +772,7 @@ print('onClick x='..x
 								local jumpToVtxIndex = nbhdVtxIndexes[i]
 
 								if jumpToVtxIndex == vertexIndex then
+print('jumping from', selectedPiece.vertexIndex, 'to', jumpToVtxIndex)
 									-- exchange places
 									vtxPieces[selectedPiece.vertexIndex] = nil
 									selectedPiece.vertexIndex = jumpToVtxIndex
@@ -887,15 +891,16 @@ void main() {
 	self.modelMat = vec4x4f():setIdent()
 
 	for _,shape in ipairs(shapes) do
-		local vtxGPU = GLArrayBuffer{
-			dim = 3,
-			data = shape.vs.v,
-			size = shape.vs:getNumBytes(),
-			usage = gl.GL_STATIC_DRAW,
-		}:unbind()
-
 		for subdivIndex=0,#shape.subdivs do
 			local subdiv = shape.subdivs[subdivIndex] or shape
+			
+			subdiv.vtxGPU = GLArrayBuffer{
+				dim = 3,
+				data = subdiv.vs.v,
+				size = subdiv.vs:getNumBytes(),
+				usage = gl.GL_STATIC_DRAW,
+			}:unbind()
+
 			local faceGeoms = subdiv.faces:mapi(function(face)
 				return {
 					--mode = gl.GL_POLYGON,		-- not in GLES3
@@ -908,7 +913,7 @@ void main() {
 
 			subdiv.lineObj = GLSceneObject{
 				program = lineProgram,
-				vertexes = vtxGPU,
+				vertexes = subdiv.vtxGPU,
 				geometries = faceGeoms,
 				uniforms = {
 					modelMat = self.modelMat.ptr,
@@ -920,7 +925,7 @@ void main() {
 			}
 			subdiv.faceObj = GLSceneObject{
 				program = faceProgram,
-				vertexes = vtxGPU,
+				vertexes = subdiv.vtxGPU,
 				geometries = faceGeoms,
 				uniforms = {
 					modelMat = self.modelMat.ptr,
@@ -1022,7 +1027,7 @@ end
 
 App.viewDist = 2
 
-local clickShapeID = vec4i()
+local mouseOverShapeID = vec4i()
 
 local clearShapeID = vec4i(-1,-1,-1,-1)
 local clearColor = vec4f(1,1,1,1)
@@ -1054,7 +1059,7 @@ function App:update(...)
 		-- also draw the dual's vertexIndex so we can click the shape surface
 	end
 
-	for _,vi in ipairs(subdiv.vtxsUsedIndexes) do
+	for vi=1,#subdiv.vs do
 		local piece = vtxPieces[vi]
 		local piecePlayerIndex = -1
 		local pieceIndex = -1
@@ -1087,8 +1092,8 @@ function App:update(...)
 
 		self.modelMat
 			--:setIdent()
-			--:setTranslate(shape.vs.v[vi-1]:unpack())
-			:copy(shape.qs.v[vi-1])
+			--:setTranslate(subdiv.vs.v[vi-1]:unpack())
+			:copy(subdiv.qs.v[vi-1])
 			:applyScale(.07, .07, .07)
 
 		-- TODO this doesn't work
@@ -1113,9 +1118,34 @@ function App:update(...)
 	local mx = self.mouse.ipos.x
 	local my = self.height - 1 - self.mouse.ipos.y
 	gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT1)
-	gl.glReadPixels(mx, my, 1, 1, self.clickIDFBOTex.format, self.clickIDFBOTex.type, clickShapeID.s)
+	gl.glReadPixels(mx, my, 1, 1, self.clickIDFBOTex.format, self.clickIDFBOTex.type, mouseOverShapeID.s)
 	gl.glReadBuffer(gl.GL_BACK)
 
+
+	do
+		local vi = mouseOverShapeID.z 
+		if vi >= 0 and vi < #subdiv.vs then
+			gl.glEnable(gl.GL_BLEND)
+			gl.glBlendFunc(gl.GL_DST_COLOR, gl.GL_ZERO)
+			nbhdVtxIndexes = subdiv.vtxNbhds[vi]
+			for _,vi in ipairs(nbhdVtxIndexes) do
+				
+				self.modelMat
+					--:setIdent()
+					--:setTranslate(subdiv.vs.v[vi-1]:unpack())
+					:copy(subdiv.qs.v[vi-1])
+					:applyScale(.15, .15, .15)
+
+				self.placeObj:draw{
+					uniforms = {
+						color = {1,.5,1,1},
+						shapeID = {0,0,0,0},
+					},
+				}
+			end
+			gl.glDisable(gl.GL_BLEND)
+		end
+	end
 
 	self.fbo:unbind()
 
@@ -1141,6 +1171,39 @@ function App:updateGUI()
 		end
 		ig.igEndMainMenuBar()
 	end
+
+
+
+	ig.igPushID_Str'hover'
+	ig.igSetNextWindowPos(
+		ig.ImVec2(self.mouse.ipos.x + 3, self.mouse.ipos.y + 3),
+		0,
+		ig.ImVec2()
+	)
+	ig.igBegin(
+		'hover',
+		nil,
+		bit.bor(
+			ig.ImGuiWindowFlags_NoDecoration,
+			ig.ImGuiWindowFlags_Tooltip
+		)
+	)
+	
+	local shape = shapes[vars.shapeIndex]
+	local subdiv = shape.subdivs[vars.subdivIndex] or shape
+	local vi = mouseOverShapeID.z 
+	local nbhdVtxIndexes = subdiv and subdiv.vtxNbhds[vi]
+
+	ig.igText(
+		tostring(mouseOverShapeID)
+		-- why wont newline work?
+		..(nbhdVtxIndexes and ' : '..nbhdVtxIndexes:concat', ' or '')
+	)
+
+	ig.igEnd()
+	ig.igPopID()
+
+
 end
 
 function App:event(e)
@@ -1157,7 +1220,7 @@ function App:event(e)
 					onClick(
 						tonumber(e[0].button.x)/self.width,
 						tonumber(e[0].button.y)/self.height,
-						clickShapeID:unpack()
+						mouseOverShapeID:unpack()
 					)
 				end
 			end
