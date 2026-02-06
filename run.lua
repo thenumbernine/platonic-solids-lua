@@ -1139,6 +1139,7 @@ function App:update(...)
 	gl.glReadBuffer(gl.GL_BACK)
 
 
+	-- show neighborhood
 	do
 		local vi = mouseOverShapeID.z 
 		if vi >= 0 and vi < #subdiv.vs then
@@ -1190,7 +1191,7 @@ function App:updateGUI()
 	end
 
 
-
+--[[ debug mouse
 	ig.igPushID_Str'hover'
 	ig.igSetNextWindowPos(
 		ig.ImVec2(self.mouse.ipos.x + 3, self.mouse.ipos.y + 3),
@@ -1219,8 +1220,7 @@ function App:updateGUI()
 
 	ig.igEnd()
 	ig.igPopID()
-
-
+--]]
 end
 
 function App:event(e)
