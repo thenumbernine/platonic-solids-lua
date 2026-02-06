@@ -24,6 +24,7 @@ local ig = require 'imgui'
 
 
 local App = require 'imgui.appwithorbit'():subclass()
+App.title = 'Chinese Checkers on a Sphere'
 
 local sqrt2 = math.sqrt(2)
 local sqrt3 = math.sqrt(3)
@@ -583,12 +584,12 @@ local vtxPieces
 local playerStartForVtxIndex
 
 local colors = table{
-	vec4f(0,0,0,1),		-- black
 	vec4f(1,1,1,1),		-- white
+	vec4f(0,0,0,1),		-- black
 	vec4f(1,0,0,1),		-- red
 	vec4f(1,0,1,1),		-- blue
-	vec4f(0,1,0,1),		-- green
 	vec4f(1,1,0,1),		-- yellow
+	vec4f(0,1,0,1),		-- green
 }
 
 function App:initGame()
@@ -873,8 +874,9 @@ layout(location=0) out vec3 vertexv;
 uniform mat4 modelMat;
 uniform mat4 viewMat;
 uniform mat4 projMat;
+uniform float normalScale;
 void main() {
-	vertexv = (modelMat * vec4(vertex, 0.)).xyz;
+	vertexv = (viewMat * vec4((modelMat * vec4(vertex, 0.)).xyz, 0.)).xyz * vec3(1., 1., normalScale);
 	gl_Position = projMat * (viewMat * (modelMat * vec4(vertex, 1.)));
 	gl_PointSize = 7.;
 }
@@ -939,6 +941,7 @@ void main() {
 					projMat = self.view.projMat.ptr,
 					color = {1,1,1,1},
 					shapeID = {-1,-1,-1,-1},
+					normalScale = 1,
 				},
 			}
 		end
@@ -970,6 +973,7 @@ void main() {
 			projMat = self.view.projMat.ptr,
 			color = {0,0,0,0},
 			shapeID = {-1,-1,-1,-1},
+			normalScale = 10,
 		},
 	}
 
@@ -1057,7 +1061,11 @@ function App:update(...)
 	local shape = shapes[vars.shapeIndex]
 	local subdiv = shape.subdivs[vars.subdivIndex] or shape
 	if subdiv then
-		subdiv.faceObj:draw()
+		subdiv.faceObj:draw{
+			uniforms = {
+				color = {.7, .5, .4, 1},
+			},
+		}
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
 		subdiv.lineObj:draw()
 		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
@@ -1071,6 +1079,7 @@ function App:update(...)
 		local pieceIndex = -1
 		local color
 		local globj
+		local scale
 		if piece then
 			piecePlayerIndex = piece.playerIndex
 			pieceIndex = piece.index
@@ -1082,6 +1091,7 @@ function App:update(...)
 				color = players[piecePlayerIndex].color.s
 			end
 			globj = shapes[5].subdivs[6].faceObj
+			scale = .07
 		else
 			local startPlayerIndex = playerStartForVtxIndex[vi]
 			if startPlayerIndex then
@@ -1093,6 +1103,7 @@ function App:update(...)
 				color = {.9, .9, .9, 0}
 			end
 			globj = self.placeObj
+			scale = .05
 		end
 		shapeID:set(piecePlayerIndex, pieceIndex, vi, 0)
 
@@ -1100,7 +1111,7 @@ function App:update(...)
 			--:setIdent()
 			--:setTranslate(subdiv.vs.v[vi-1]:unpack())
 			:copy(subdiv.qs.v[vi-1])
-			:applyScale(.07, .07, .07)
+			:applyScale(scale, scale, scale)
 
 		-- TODO this doesn't work
 		-- how to make it just write the shapeID but not the color?
@@ -1140,7 +1151,7 @@ function App:update(...)
 					--:setIdent()
 					--:setTranslate(subdiv.vs.v[vi-1]:unpack())
 					:copy(subdiv.qs.v[vi-1])
-					:applyScale(.15, .15, .15)
+					:applyScale(.1, .1, .1)
 
 				self.placeObj:draw{
 					uniforms = {
