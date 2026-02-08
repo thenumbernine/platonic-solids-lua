@@ -1,0 +1,17 @@
+--------------------------------------------
+-- generated with dist/build-distinfo.rua --
+--------------------------------------------
+
+name = "platonic-solids"
+files = {
+	"README.md",
+	"run.lua",
+}
+deps = {
+	"ext",
+	"gl",
+	"imgui",
+	"sdl",
+	"stl",
+	"vec-ffi",
+}
