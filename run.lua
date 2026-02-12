@@ -678,12 +678,7 @@ assert(vertexIndex)
 	startTurn()
 
 	onClick = function(x, y, playerIndex, pieceIndex, vertexIndex)
-print('onClick x='..x
-	..' y='..y
-	..' playerIndex='..playerIndex
-	..' pieceIndex='..pieceIndex
-	..' vertexIndex='..vertexIndex
-)
+--DEBUG:print('onClick x='..x..' y='..y..' playerIndex='..playerIndex..' pieceIndex='..pieceIndex..' vertexIndex='..vertexIndex)
 		local currentPlayer = assert.index(players, playerTurn)
 
 		-- nothing is selected
@@ -779,7 +774,7 @@ print('jumping from', selectedPiece.vertexIndex, 'to', jumpToVtxIndex)
 								local jumpToVtxIndex = nbhdVtxIndexes[i]
 
 								if jumpToVtxIndex == vertexIndex then
-print('jumping from', selectedPiece.vertexIndex, 'to', jumpToVtxIndex)
+--DEBUG:print('jumping from', selectedPiece.vertexIndex, 'to', jumpToVtxIndex)
 									-- exchange places
 									vtxPieces[selectedPiece.vertexIndex] = nil
 									selectedPiece.vertexIndex = jumpToVtxIndex
@@ -918,11 +913,31 @@ void main() {
 					},
 				}
 			end)
+			
+			local lineIndexes = table()
+			local linesSoFar = {}
+			for _,face in ipairs(subdiv.faces) do
+				for i=1,#face do
+					local a, b = face[i], face[i%#face+1]
+					if a > b then a,b = b,a end
+					if not linesSoFar[a] then linesSoFar[a] = {} end
+					if not linesSoFar[a][b] then
+						linesSoFar[a][b] = true
+						lineIndexes:insert(a-1)
+						lineIndexes:insert(b-1)
+					end
+				end
+			end
 
 			subdiv.lineObj = GLSceneObject{
 				program = lineProgram,
 				vertexes = subdiv.vtxGPU,
-				geometries = faceGeoms,
+				geometry = {
+					mode = gl.GL_LINES,
+					indexes = {
+						data = lineIndexes,
+					},
+				},
 				uniforms = {
 					modelMat = self.modelMat.ptr,
 					viewMat = self.view.mvMat.ptr,
@@ -1066,9 +1081,7 @@ function App:update(...)
 				color = {.7, .5, .4, 1},
 			},
 		}
-		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
 		subdiv.lineObj:draw()
-		gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
 		-- TODO TODO
 		-- also draw the dual's vertexIndex so we can click the shape surface
 	end
@@ -1185,6 +1198,9 @@ function App:updateGUI()
 				end
 			end
 
+			ig.igEndMenu()
+		end
+		if ig.igBeginMenu('player #'..tostring(playerTurn).."'s turn") then
 			ig.igEndMenu()
 		end
 		ig.igEndMainMenuBar()
